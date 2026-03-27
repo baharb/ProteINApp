@@ -1,0 +1,19 @@
+# Node & Web
+node_modules/
+#dist/
+www/
+
+# Android Specific
+.gradle/
+build/
+local.properties
+*.keystore
+!debug.keystore
+
+# Capacitor Artifacts
+android/app/src/main/assets/public/
+android/app/src/main/assets/capacitor.config.json
+
+# IDEs
+.idea/
+*.iml
