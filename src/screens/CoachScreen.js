@@ -4,116 +4,162 @@ import {
   StyleSheet, KeyboardAvoidingView, Platform, ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { colors, radius, AI_RESPONSES } from '../data/constants';
+import { colors, radius } from '../data/constants';
 import { useApp } from '../hooks/useApp';
 
+// ─── YOUR SERVER URL ────────────────────────────────────────────────────────
+// Local testing:  'http://YOUR_LOCAL_IP:3000'  (e.g. http://192.168.1.5:3000)
+// After deploying: 'https://your-app.onrender.com' or Railway URL
+const SERVER_URL = 'https://proteinserver.onrender.com';
+// ────────────────────────────────────────────────────────────────────────────
+
+const QUICK_QS = [
+  'How do I hit my protein goal today?',
+  'Give me a high-protein meal idea',
+  'How do I lose fat without losing muscle?',
+  'What should I eat after a workout?',
+];
+
 export default function CoachScreen({ navigation }) {
-  const { today, goals } = useApp();
-  const [messages, setMessages] = useState([
-    { type: 'ai', text: "Hey! I'm your AI health coach 💪 Ask me anything about nutrition, protein, or your fitness goals!" },
-  ]);
-  const [input, setInput] = useState('');
-  const [thinking, setThinking] = useState(false);
+  const { today, goals, goals2, profile } = useApp();
+  const [messages, setMessages]   = useState([]);
+  const [input, setInput]         = useState('');
+  const [thinking, setThinking]   = useState(false);
+  const [error, setError]         = useState(null);
   const scrollRef = useRef(null);
 
-  function sendMsg() {
-    const msg = input.trim();
-    if (!msg) return;
-    setInput('');
-    setMessages(prev => [...prev, { type: 'user', text: msg }]);
-    setThinking(true);
-
-    setTimeout(() => {
-      const lower = msg.toLowerCase();
-      let response = AI_RESPONSES.default;
-      if (lower.includes('protein')) response = AI_RESPONSES.protein;
-      else if (lower.includes('calorie') || lower.includes('calories')) response = AI_RESPONSES.calories;
-      else if (lower.includes('meal') || lower.includes('eat') || lower.includes('food')) response = AI_RESPONSES.meal;
-      else if (lower.includes('muscle') || lower.includes('bulk')) response = AI_RESPONSES.muscle;
-      else if (lower.includes('lose') || lower.includes('fat') || lower.includes('weight')) response = AI_RESPONSES.lose;
-
-      if (today.protein > 0) {
-        response += `\n\nToday so far: ${today.protein}g protein / ${today.calories} kcal. `;
-        response += today.protein >= goals.protein
-          ? 'Protein goal hit! ✅'
-          : `${goals.protein - today.protein}g protein remaining.`;
-      }
-
-      setThinking(false);
-      setMessages(prev => [...prev, { type: 'ai', text: response }]);
-      setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
-    }, 1200);
+  // Context sent to server with every message
+  function buildProfile() {
+    return {
+      goals: goals2 || [],
+      goalCalories: goals.calories,
+      goalProtein:  goals.protein,
+      goalCarbs:    goals.carbs,
+      goalFat:      goals.fat,
+      todayCalories: today.calories,
+      todayProtein:  today.protein,
+      meals: today.meals.map(m => m.name),
+      age:       profile?.age,
+      weightKg:  profile?.weightKg,
+      heightCm:  profile?.heightCm,
+      gender:    profile?.gender,
+    };
   }
 
-  const QUICK_QUESTIONS = [
-    'How do I get 120g protein easily?',
-    'What should I eat to build muscle?',
-    'How do I lose fat without losing muscle?',
-    'Explain my calorie target',
+  async function send(msgOverride) {
+    const text = (msgOverride || input).trim();
+    if (!text || thinking) return;
+    setInput('');
+    setError(null);
+
+    const newUserMsg = { role: 'user', content: text };
+    const updatedHistory = [...messages, newUserMsg];
+    setMessages(updatedHistory);
+    setThinking(true);
+    setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
+
+    try {
+      const res = await fetch(`${SERVER_URL}/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: updatedHistory,
+          profile: buildProfile(),
+        }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || `Server error ${res.status}`);
+      }
+
+      const data = await res.json();
+      setMessages(prev => [...prev, { role: 'assistant', content: data.reply }]);
+
+    } catch (err) {
+      setError(err.message.includes('fetch')
+        ? 'Cannot reach server. Check your SERVER_URL in CoachScreen.js'
+        : err.message);
+    } finally {
+      setThinking(false);
+      setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
+    }
+  }
+
+  const displayMessages = [
+    { role: 'assistant', content: "Hey! I'm your AI nutrition coach 💪 Ask me anything about your diet, protein targets, or fitness goals!" },
+    ...messages,
   ];
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top']}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-          <Text style={styles.backText}>← Back</Text>
+    <SafeAreaView style={s.safe} edges={['top']}>
+      <View style={s.header}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={s.backBtn}>
+          <Text style={s.backText}>‹ Back</Text>
         </TouchableOpacity>
-        <Text style={styles.title}>🤖 AI Health Coach</Text>
+        <Text style={s.title}>🤖 AI Coach</Text>
         <View style={{ width: 60 }} />
       </View>
 
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={0}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView
           ref={scrollRef}
-          style={styles.messages}
+          style={s.msgs}
           contentContainerStyle={{ padding: 16, gap: 12 }}
           showsVerticalScrollIndicator={false}
           onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}
         >
-          {messages.map((m, i) => (
-            <View key={i} style={[styles.msgWrap, m.type === 'user' ? styles.userWrap : styles.aiWrap]}>
-              <View style={[styles.bubble, m.type === 'user' ? styles.userBubble : styles.aiBubble]}>
-                <Text style={[styles.bubbleText, m.type === 'user' && { color: '#0a0a0f', fontWeight: '500' }]}>
-                  {m.text}
+          {displayMessages.map((m, i) => (
+            <View key={i} style={[s.msgWrap, m.role === 'user' ? s.userWrap : s.aiWrap]}>
+              <View style={[s.bubble, m.role === 'user' ? s.userBubble : s.aiBubble]}>
+                <Text style={[s.bubbleText, m.role === 'user' && { color: '#0a0a0f', fontWeight: '500' }]}>
+                  {m.content}
                 </Text>
               </View>
             </View>
           ))}
 
           {thinking && (
-            <View style={styles.aiWrap}>
-              <View style={styles.aiBubble}>
+            <View style={s.aiWrap}>
+              <View style={[s.aiBubble, { flexDirection: 'row', alignItems: 'center', gap: 8 }]}>
                 <ActivityIndicator size="small" color={colors.text2} />
+                <Text style={{ color: colors.text2, fontSize: 13 }}>Thinking…</Text>
               </View>
             </View>
           )}
 
-          {/* Quick questions */}
-          {messages.length === 1 && (
-            <View style={styles.quickQs}>
-              <Text style={styles.quickQsLabel}>Try asking:</Text>
-              {QUICK_QUESTIONS.map(q => (
-                <TouchableOpacity key={q} style={styles.quickQ} onPress={() => { setInput(q); }}>
-                  <Text style={styles.quickQText}>{q}</Text>
+          {error && (
+            <View style={s.errorBubble}>
+              <Text style={s.errorText}>⚠️ {error}</Text>
+            </View>
+          )}
+
+          {/* Quick questions — show only at start */}
+          {messages.length === 0 && !thinking && (
+            <View style={{ gap: 8, marginTop: 4 }}>
+              <Text style={{ fontSize: 12, color: colors.text2, marginBottom: 2 }}>Try asking:</Text>
+              {QUICK_QS.map(q => (
+                <TouchableOpacity key={q} style={s.quickQ} onPress={() => send(q)}>
+                  <Text style={s.quickQText}>{q}</Text>
                 </TouchableOpacity>
               ))}
             </View>
           )}
         </ScrollView>
 
-        <View style={styles.inputWrap}>
+        <View style={s.inputRow}>
           <TextInput
-            style={styles.input}
+            style={s.input}
             value={input}
             onChangeText={setInput}
             placeholder="Ask me anything…"
             placeholderTextColor={colors.text3}
             multiline
-            onSubmitEditing={sendMsg}
             returnKeyType="send"
+            onSubmitEditing={() => send()}
           />
-          <TouchableOpacity style={styles.sendBtn} onPress={sendMsg}>
-            <Text style={styles.sendBtnText}>↑</Text>
+          <TouchableOpacity style={[s.sendBtn, thinking && { opacity: 0.5 }]} onPress={() => send()} disabled={thinking}>
+            <Text style={s.sendText}>↑</Text>
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
@@ -121,26 +167,26 @@ export default function CoachScreen({ navigation }) {
   );
 }
 
-const styles = StyleSheet.create({
+const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16, borderBottomWidth: 1, borderBottomColor: colors.border },
   backBtn: { padding: 4 },
-  backText: { color: colors.accent, fontSize: 15, fontWeight: '600' },
+  backText: { color: colors.accent, fontSize: 16, fontWeight: '600' },
   title: { fontSize: 17, fontWeight: '700', color: colors.text },
-  messages: { flex: 1 },
+  msgs: { flex: 1 },
   msgWrap: { maxWidth: '85%' },
   userWrap: { alignSelf: 'flex-end' },
   aiWrap: { alignSelf: 'flex-start' },
   bubble: { padding: 12, borderRadius: 16 },
   userBubble: { backgroundColor: colors.accent, borderTopRightRadius: 4 },
-  aiBubble: { backgroundColor: colors.card, borderTopLeftRadius: 4, borderWidth: 1, borderColor: colors.border },
+  aiBubble: { backgroundColor: colors.card, borderTopLeftRadius: 4, borderWidth: 1, borderColor: colors.border, padding: 12, borderRadius: 16 },
   bubbleText: { color: colors.text, fontSize: 14, lineHeight: 22 },
-  quickQs: { marginTop: 8, gap: 8 },
-  quickQsLabel: { fontSize: 12, color: colors.text2, marginBottom: 4 },
+  errorBubble: { backgroundColor: 'rgba(255,140,66,0.12)', borderRadius: 12, padding: 12, borderWidth: 1, borderColor: 'rgba(255,140,66,0.3)' },
+  errorText: { color: colors.orange, fontSize: 13, lineHeight: 20 },
   quickQ: { backgroundColor: colors.card2, borderRadius: radius.sm, padding: 12, borderWidth: 1, borderColor: colors.border },
   quickQText: { fontSize: 13, color: colors.text, fontWeight: '500' },
-  inputWrap: { flexDirection: 'row', padding: 12, gap: 8, borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.bg2 },
+  inputRow: { flexDirection: 'row', padding: 12, gap: 8, borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.bg2 },
   input: { flex: 1, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, borderRadius: radius.sm, padding: 12, fontSize: 14, color: colors.text, maxHeight: 100 },
   sendBtn: { backgroundColor: colors.accent, borderRadius: radius.sm, width: 46, alignItems: 'center', justifyContent: 'center' },
-  sendBtnText: { color: '#0a0a0f', fontSize: 20, fontWeight: '700' },
+  sendText: { color: '#0a0a0f', fontSize: 20, fontWeight: '700' },
 });

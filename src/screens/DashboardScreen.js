@@ -3,130 +3,138 @@ import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-nati
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, radius, TIPS } from '../data/constants';
 import { useApp } from '../hooks/useApp';
-import {
-  MacroBar, ProteinStatusCard, HealthScoreRing, TipCard, SectionTitle,
-} from '../components/UI';
+import { MacroBar, ProteinStatusBadge, TipCard } from '../components/UI';
 
 const TIP = TIPS[Math.floor(Math.random() * TIPS.length)];
-
-const MEAL_SLOTS = [
+const SLOTS = [
   { name: 'Breakfast', icon: '🌅', slot: 0 },
-  { name: 'Lunch', icon: '☀️', slot: 1 },
-  { name: 'Dinner', icon: '🌙', slot: 2 },
-  { name: 'Snacks', icon: '🍎', slot: 3 },
+  { name: 'Lunch',     icon: '☀️',  slot: 1 },
+  { name: 'Dinner',    icon: '🌙',  slot: 2 },
+  { name: 'Snack',     icon: '🍎',  slot: 3 },
 ];
 
 export default function DashboardScreen({ navigation }) {
-  const { today, goals } = useApp();
-
-  const pPct = goals.protein > 0 ? Math.min(100, Math.round((today.protein / goals.protein) * 100)) : 0;
-  const cPct = goals.calories > 0 ? Math.min(100, Math.round((today.calories / goals.calories) * 100)) : 0;
-  const mealPct = Math.min(100, Math.round((today.meals.length / 3) * 100));
-  const score = Math.round(pPct * 0.5 + cPct * 0.3 + mealPct * 0.2);
+  const { today, goals, removeMeal } = useApp();
 
   const hour = new Date().getHours();
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
-  const dateStr = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+  const dateStr = new Date().toLocaleDateString('en-US', { weekday:'long', month:'long', day:'numeric' });
 
-  function getMealsForSlot(slot) {
-    return today.meals.filter(m => m.slot === slot);
-  }
+  const pPct  = goals.protein  > 0 ? Math.min(100, today.protein  / goals.protein  * 100) : 0;
+  const cPct  = goals.calories > 0 ? Math.min(100, today.calories / goals.calories * 100) : 0;
+  const score = Math.round(pPct * 0.6 + cPct * 0.4);
+
+  const scoreEmoji = score >= 80 ? '🏆' : score >= 60 ? '💪' : score >= 30 ? '🔥' : '🌱';
 
   return (
-    <SafeAreaView style={styles.safe}>
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
+    <SafeAreaView style={s.safe}>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.scroll}>
 
-        {/* Greeting */}
-        <View style={styles.greet}>
-          <Text style={styles.greetName}>{greeting}! 👋</Text>
-          <Text style={styles.greetDate}>{dateStr}</Text>
-          <View style={styles.streakBadge}>
-            <Text style={styles.streakText}>🔥 5 day streak</Text>
+        {/* Header */}
+        <View style={s.header}>
+          <View>
+            <Text style={s.greeting}>{greeting} 👋</Text>
+            <Text style={s.date}>{dateStr}</Text>
           </View>
+          <TouchableOpacity style={s.coachBtn} onPress={() => navigation.navigate('Coach')} activeOpacity={0.8}>
+            <Text style={{fontSize:22}}>🤖</Text>
+          </TouchableOpacity>
         </View>
 
-        {/* Health Score */}
-        <HealthScoreRing score={score} onPress={() => navigation.navigate('Coach')} />
+        {/* Score card */}
+        <View style={s.scoreCard}>
+          <View>
+            <Text style={s.scoreLabel}>Today's Score</Text>
+            <Text style={s.scoreValue}>{score}<Text style={s.scoreMax}>/100</Text></Text>
+            <ProteinStatusBadge today={today} goals={goals} />
+          </View>
+          <Text style={{fontSize:56}}>{scoreEmoji}</Text>
+        </View>
 
-        {/* Macro Grid */}
-        <View style={styles.macroGrid}>
+        {/* Macros */}
+        <View style={s.macroRow}>
           <MacroBar label="Protein" icon="💪" value={today.protein} target={goals.protein} color={colors.accent} />
           <MacroBar label="Calories" icon="🔥" value={today.calories} target={goals.calories} unit="" color={colors.orange} />
         </View>
-        <View style={styles.macroGrid}>
+        <View style={s.macroRow}>
           <MacroBar label="Carbs" icon="🌾" value={today.carbs} target={goals.carbs} color={colors.accent3} />
-          <MacroBar label="Fat" icon="🥑" value={today.fat} target={goals.fat} color={colors.pink} />
+          <MacroBar label="Fat"   icon="🥑" value={today.fat}   target={goals.fat}   color={colors.pink} />
         </View>
 
-        {/* Protein Status */}
-        <ProteinStatusCard today={today} goals={goals} />
+        {/* Quick actions */}
+        <View style={s.actionRow}>
+          <TouchableOpacity style={s.actionBtn} onPress={() => navigation.navigate('ScanTab')} activeOpacity={0.85}>
+            <Text style={{fontSize:24}}>📷</Text>
+            <Text style={s.actionText}>Scan</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={s.actionBtn} onPress={() => navigation.navigate('AddTab')} activeOpacity={0.85}>
+            <Text style={{fontSize:24}}>➕</Text>
+            <Text style={s.actionText}>Add Food</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={s.actionBtn} onPress={() => navigation.navigate('Coach')} activeOpacity={0.85}>
+            <Text style={{fontSize:24}}>🤖</Text>
+            <Text style={s.actionText}>AI Coach</Text>
+          </TouchableOpacity>
+        </View>
 
-        {/* Scan CTA */}
-        <TouchableOpacity style={styles.scanCta} onPress={() => navigation.navigate('ScanTab')} activeOpacity={0.9}>
-          <View>
-            <Text style={styles.scanCtaTitle}>📷 Scan a Meal</Text>
-            <Text style={styles.scanCtaSub}>Log food in under 3 seconds</Text>
+        {/* Meals */}
+        <Text style={s.sectionTitle}>Today's Meals</Text>
+        {today.meals.length === 0 ? (
+          <View style={s.emptyMeals}>
+            <Text style={s.emptyEmoji}>🍽️</Text>
+            <Text style={s.emptyText}>No meals logged yet</Text>
+            <TouchableOpacity onPress={() => navigation.navigate('ScanTab')} style={s.emptyBtn}>
+              <Text style={s.emptyBtnText}>Scan your first meal →</Text>
+            </TouchableOpacity>
           </View>
-          <Text style={{ fontSize: 28 }}>→</Text>
-        </TouchableOpacity>
-
-        {/* Today's Meals */}
-        <SectionTitle title="Today's Meals" action="+ Add" onAction={() => navigation.navigate('AddTab')} />
-        {MEAL_SLOTS.map(slot => {
-          const meals = getMealsForSlot(slot.slot);
-          if (meals.length === 0) {
+        ) : (
+          today.meals.map((m, i) => {
+            const slot = SLOTS.find(sl => sl.slot === m.slot) || SLOTS[0];
             return (
-              <TouchableOpacity key={slot.name} style={styles.mealSlot} onPress={() => navigation.navigate('AddTab')} activeOpacity={0.8}>
-                <View style={styles.mealSlotLeft}>
-                  <View style={styles.mealIcon}><Text style={{ fontSize: 16 }}>{slot.icon}</Text></View>
-                  <View>
-                    <Text style={styles.mealName}>{slot.name}</Text>
-                    <Text style={styles.mealInfo}>No meals logged</Text>
-                  </View>
+              <View key={i} style={s.mealRow}>
+                <Text style={{fontSize:18, marginRight:10}}>{slot.icon}</Text>
+                <View style={{flex:1}}>
+                  <Text style={s.mealName}>{m.name}</Text>
+                  <Text style={s.mealMacros}>{m.p}g protein · {m.cal} kcal</Text>
                 </View>
-                <Text style={styles.mealAdd}>+</Text>
-              </TouchableOpacity>
-            );
-          }
-          return meals.map((m, i) => (
-            <View key={`${slot.name}-${i}`} style={styles.mealSlot}>
-              <View style={styles.mealSlotLeft}>
-                <View style={styles.mealIcon}><Text style={{ fontSize: 16 }}>{slot.icon}</Text></View>
-                <View>
-                  <Text style={styles.mealName}>{m.name}</Text>
-                  <Text style={styles.mealInfo}>{m.p}g protein · {m.c}g carbs · {m.f}g fat</Text>
-                </View>
+                <TouchableOpacity onPress={() => removeMeal(i)} style={s.removeBtn}>
+                  <Text style={{color:colors.text3, fontSize:18}}>×</Text>
+                </TouchableOpacity>
               </View>
-              <Text style={styles.mealCals}>{m.cal}</Text>
-            </View>
-          ));
-        })}
+            );
+          })
+        )}
 
-        {/* Tip */}
         <TipCard tip={TIP} />
-        <View style={{ height: 20 }} />
+        <View style={{height:20}} />
       </ScrollView>
     </SafeAreaView>
   );
 }
 
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.bg },
-  scroll: { padding: 18, paddingTop: 10 },
-  greet: { marginBottom: 18 },
-  greetName: { fontSize: 24, fontWeight: '700', color: colors.text, letterSpacing: -0.5 },
-  greetDate: { fontSize: 13, color: colors.text2, marginTop: 2 },
-  streakBadge: { marginTop: 8, flexDirection: 'row', alignSelf: 'flex-start', backgroundColor: 'rgba(255,140,66,0.15)', borderRadius: 20, paddingHorizontal: 12, paddingVertical: 4, borderWidth: 1, borderColor: 'rgba(255,140,66,0.3)' },
-  streakText: { fontSize: 13, color: colors.orange, fontWeight: '600' },
-  macroGrid: { flexDirection: 'row', gap: 10, marginBottom: 10 },
-  scanCta: { backgroundColor: 'rgba(126,255,160,0.08)', borderRadius: radius.lg, padding: 18, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18, borderWidth: 1, borderColor: 'rgba(126,255,160,0.25)' },
-  scanCtaTitle: { fontSize: 17, fontWeight: '700', color: colors.text, marginBottom: 3 },
-  scanCtaSub: { fontSize: 13, color: colors.text2 },
-  mealSlot: { backgroundColor: colors.card, borderRadius: radius.sm, padding: 14, marginBottom: 8, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderWidth: 1, borderColor: colors.border },
-  mealSlotLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  mealIcon: { width: 36, height: 36, borderRadius: 9, backgroundColor: colors.card2, alignItems: 'center', justifyContent: 'center' },
-  mealName: { fontSize: 13, fontWeight: '600', color: colors.text },
-  mealInfo: { fontSize: 11, color: colors.text2, marginTop: 2 },
-  mealAdd: { fontSize: 22, color: colors.text3 },
-  mealCals: { fontSize: 15, fontWeight: '700', color: colors.orange },
+const s = StyleSheet.create({
+  safe: { flex:1, backgroundColor:colors.bg },
+  scroll: { padding:18, paddingTop:10 },
+  header: { flexDirection:'row', justifyContent:'space-between', alignItems:'center', marginBottom:16 },
+  greeting: { fontSize:22, fontWeight:'700', color:colors.text, letterSpacing:-0.5 },
+  date: { fontSize:12, color:colors.text2, marginTop:2 },
+  coachBtn: { width:44, height:44, backgroundColor:colors.card, borderRadius:22, alignItems:'center', justifyContent:'center', borderWidth:1, borderColor:colors.border },
+  scoreCard: { backgroundColor:'#0f1a20', borderRadius:radius.lg, padding:18, marginBottom:12, flexDirection:'row', justifyContent:'space-between', alignItems:'center', borderWidth:1, borderColor:'rgba(0,212,255,0.2)' },
+  scoreLabel: { fontSize:11, color:colors.text2, textTransform:'uppercase', letterSpacing:1, marginBottom:4 },
+  scoreValue: { fontSize:44, fontWeight:'700', color:colors.accent3, marginBottom:8 },
+  scoreMax: { fontSize:16, color:colors.text2, fontWeight:'400' },
+  macroRow: { flexDirection:'row', gap:10, marginBottom:10 },
+  actionRow: { flexDirection:'row', gap:10, marginBottom:18 },
+  actionBtn: { flex:1, backgroundColor:colors.card, borderRadius:radius.sm, paddingVertical:14, alignItems:'center', gap:4, borderWidth:1, borderColor:colors.border },
+  actionText: { fontSize:11, color:colors.text2, fontWeight:'600' },
+  sectionTitle: { fontSize:16, fontWeight:'700', color:colors.text, marginBottom:10 },
+  emptyMeals: { backgroundColor:colors.card, borderRadius:radius.lg, padding:28, alignItems:'center', marginBottom:12, borderWidth:1, borderColor:colors.border },
+  emptyEmoji: { fontSize:40, marginBottom:8 },
+  emptyText: { fontSize:14, color:colors.text2, marginBottom:12 },
+  emptyBtn: { backgroundColor:'rgba(126,255,160,0.12)', borderRadius:radius.sm, paddingHorizontal:16, paddingVertical:8 },
+  emptyBtnText: { color:colors.accent, fontWeight:'600', fontSize:13 },
+  mealRow: { backgroundColor:colors.card, borderRadius:radius.sm, padding:14, marginBottom:8, flexDirection:'row', alignItems:'center', borderWidth:1, borderColor:colors.border },
+  mealName: { fontSize:13, fontWeight:'600', color:colors.text, marginBottom:2 },
+  mealMacros: { fontSize:11, color:colors.text2 },
+  removeBtn: { padding:4, paddingLeft:12 },
 });

@@ -4,20 +4,21 @@ import {
   StyleSheet, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { colors, radius } from '../data/constants';
+import { colors, radius, inputToKg, inputToCm } from '../data/constants';
 import { useApp } from '../hooks/useApp';
+import { PrimaryButton } from '../components/UI';
 
 const ACTIVITIES = [
-  { key: 'sedentary', label: '🪑 Sedentary' },
-  { key: 'light', label: '🚶 Light' },
-  { key: 'moderate', label: '🏃 Moderate' },
-  { key: 'active', label: '⚡ Very Active' },
+  { key: 'sedentary', label: 'Sedentary', desc: 'Little or no exercise' },
+  { key: 'light',     label: 'Light',     desc: '1–3 days/week' },
+  { key: 'moderate',  label: 'Moderate',  desc: '3–5 days/week' },
+  { key: 'active',    label: 'Very Active',desc: '6–7 days/week' },
 ];
 
-const GOALS = [
-  { key: 'lose', icon: '🔥', label: 'Lose Fat', desc: 'Caloric deficit with high protein to preserve muscle' },
-  { key: 'muscle', icon: '💪', label: 'Build Muscle', desc: 'Slight surplus, maximizing protein synthesis' },
-  { key: 'healthy', icon: '🌿', label: 'Stay Healthy', desc: 'Balanced macros for long-term wellbeing' },
+const GOALS_LIST = [
+  { key: 'lose',    icon: '🔥', label: 'Lose Fat',       desc: 'Caloric deficit, high protein' },
+  { key: 'muscle',  icon: '💪', label: 'Build Muscle',   desc: 'Slight surplus, max protein' },
+  { key: 'healthy', icon: '🌿', label: 'Stay Healthy',   desc: 'Balanced long-term approach' },
 ];
 
 export default function OnboardingScreen({ onComplete }) {
@@ -26,209 +27,264 @@ export default function OnboardingScreen({ onComplete }) {
   const [weight, setWeight] = useState('');
   const [height, setHeight] = useState('');
   const [gender, setGender] = useState('male');
-  const [activity, setActivity] = useState('sedentary');
-  const [goal, setGoal] = useState('muscle');
-  const [calcGoals, setCalcGoals] = useState(null);
-  const { calcAndSetGoals, loadDemo } = useApp();
+  const [activity, setActivity] = useState('moderate');
+  const [selectedGoals, setSelectedGoals] = useState(['muscle']);
+  const [weightUnit, setWeightUnit] = useState('kg');  // kg | lbs
+  const [heightUnit, setHeightUnit] = useState('cm');  // cm | in | ft
+  const [calcResult, setCalcResult] = useState(null);
+  const { calcAndSetGoals, setUnits } = useApp();
+
+  function toggleGoal(key) {
+    setSelectedGoals(prev =>
+      prev.includes(key) ? prev.filter(g => g !== key) : [...prev, key]
+    );
+  }
 
   function handleCalc() {
+    if (selectedGoals.length === 0) { alert('Please select at least one goal.'); return; }
     const a = parseInt(age) || 25;
-    const w = parseInt(weight) || 75;
-    const h = parseInt(height) || 175;
+    const wKg = inputToKg(weight || '75', weightUnit);
+    const hCm = inputToCm(height || '175', heightUnit);
     let bmr = gender === 'male'
-      ? 10 * w + 6.25 * h - 5 * a + 5
-      : 10 * w + 6.25 * h - 5 * a - 161;
-    const actMult = { sedentary: 1.2, light: 1.375, moderate: 1.55, active: 1.725 };
+      ? 10 * wKg + 6.25 * hCm - 5 * a + 5
+      : 10 * wKg + 6.25 * hCm - 5 * a - 161;
+    const actMult = { sedentary:1.2, light:1.375, moderate:1.55, active:1.725 };
     const tdee = bmr * (actMult[activity] || 1.2);
-    const goalAdj = { lose: -400, muscle: 200, healthy: 0 };
-    const calories = Math.round(tdee + goalAdj[goal]);
-    const proteinMult = { lose: 2.2, muscle: 2.0, healthy: 1.6 };
-    const protein = Math.round(w * proteinMult[goal]);
-    const fat = Math.round(calories * 0.25 / 9);
-    const carbs = Math.max(Math.round((calories - protein * 4 - fat * 9) / 4), 100);
-    setCalcGoals({ calories, protein, carbs, fat });
+    let calAdj = 0, protMult = 1.8;
+    if (selectedGoals.includes('lose'))    { calAdj -= 300; protMult = Math.max(protMult, 2.2); }
+    if (selectedGoals.includes('muscle'))  { calAdj += 150; protMult = Math.max(protMult, 2.0); }
+    if (selectedGoals.includes('healthy')) { protMult = Math.max(protMult, 1.6); }
+    const calories = Math.round(tdee + calAdj);
+    const protein  = Math.round(wKg * protMult);
+    const fat      = Math.round(calories * 0.25 / 9);
+    const carbs    = Math.max(Math.round((calories - protein*4 - fat*9)/4), 80);
+    setCalcResult({ calories, protein, carbs, fat });
     setStep(4);
   }
 
   function handleStart() {
-    calcAndSetGoals(
-      parseInt(age) || 25,
-      parseInt(weight) || 75,
-      parseInt(height) || 175,
-      gender, activity, goal
-    );
+    const wKg = inputToKg(weight || '75', weightUnit);
+    const hCm = inputToCm(height || '175', heightUnit);
+    setUnits({ weight: weightUnit, height: heightUnit });
+    calcAndSetGoals(parseInt(age)||25, wKg, hCm, gender, activity, selectedGoals);
     onComplete();
   }
 
-  return (
-    <SafeAreaView style={styles.safe}>
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+  const weightPlaceholder = weightUnit === 'kg' ? '75' : '165';
+  const heightPlaceholder = heightUnit === 'cm' ? '175' : heightUnit === 'in' ? '69' : '5.9';
 
-          {/* STEP 1: Welcome */}
+  return (
+    <SafeAreaView style={s.safe}>
+      <KeyboardAvoidingView style={{flex:1}} behavior={Platform.OS==='ios'?'padding':undefined}>
+        <ScrollView contentContainerStyle={s.scroll} keyboardShouldPersistTaps="handled">
+
+          {/* Step 1 — Welcome */}
           {step === 1 && (
-            <View style={styles.page}>
-              <Text style={styles.logo}>ProteIN <Text style={styles.logoSub}>AI</Text></Text>
-              <Text style={styles.title}>Protein-first nutrition, powered by AI</Text>
-              <Text style={styles.sub}>Log food in 3 seconds with your camera. Hit your protein goals. Build the body you want — without complexity.</Text>
-              <View style={styles.heroEmoji}><Text style={{ fontSize: 80 }}>🥗</Text></View>
-              <TouchableOpacity style={styles.obtn} onPress={() => setStep(2)}>
-                <Text style={styles.obtnText}>Get Started →</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.demoBtn} onPress={() => { loadDemo(); onComplete(); }}>
-                <Text style={styles.demoBtnText}>Try Demo Mode</Text>
-              </TouchableOpacity>
+            <View style={s.page}>
+              <Text style={s.logo}>ProteIN <Text style={s.logoSub}>AI</Text></Text>
+              <Text style={s.hero}>🥗</Text>
+              <Text style={s.title}>Protein-first nutrition, powered by AI</Text>
+              <Text style={s.sub}>Log meals in seconds. Hit your protein goals. Build the body you want.</Text>
+              <PrimaryButton title="Get Started →" onPress={() => setStep(2)} style={{ marginTop: 30 }} />
             </View>
           )}
 
-          {/* STEP 2: Profile info */}
+          {/* Step 2 — Body info + units */}
           {step === 2 && (
-            <View style={styles.page}>
-              <Text style={styles.logo}>ProteIN <Text style={styles.logoSub}>AI</Text></Text>
-              <Text style={styles.title}>Tell us about you</Text>
-              <Text style={styles.sub}>We'll calculate your exact daily targets.</Text>
+            <View style={s.page}>
+              <Text style={s.logo}>ProteIN <Text style={s.logoSub}>AI</Text></Text>
+              <Text style={s.title}>About you</Text>
+              <Text style={s.sub}>We'll calculate your exact daily targets.</Text>
 
-              <View style={styles.row}>
-                <View style={[styles.field, { flex: 1, marginRight: 8 }]}>
-                  <Text style={styles.fieldLabel}>Age</Text>
-                  <TextInput style={styles.input} value={age} onChangeText={setAge} keyboardType="numeric" placeholder="25" placeholderTextColor={colors.text3} />
+              {/* Units row */}
+              <View style={s.unitsRow}>
+                <View style={s.unitGroup}>
+                  <Text style={s.fieldLabel}>Weight unit</Text>
+                  <View style={s.unitBtns}>
+                    {['kg','lbs'].map(u => (
+                      <TouchableOpacity key={u} style={[s.unitBtn, weightUnit===u && s.unitBtnOn]} onPress={()=>setWeightUnit(u)}>
+                        <Text style={[s.unitBtnText, weightUnit===u && {color:colors.accent3}]}>{u}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
                 </View>
-                <View style={[styles.field, { flex: 1 }]}>
-                  <Text style={styles.fieldLabel}>Weight (kg)</Text>
-                  <TextInput style={styles.input} value={weight} onChangeText={setWeight} keyboardType="numeric" placeholder="75" placeholderTextColor={colors.text3} />
-                </View>
-              </View>
-
-              <View style={styles.row}>
-                <View style={[styles.field, { flex: 1, marginRight: 8 }]}>
-                  <Text style={styles.fieldLabel}>Height (cm)</Text>
-                  <TextInput style={styles.input} value={height} onChangeText={setHeight} keyboardType="numeric" placeholder="175" placeholderTextColor={colors.text3} />
-                </View>
-                <View style={[styles.field, { flex: 1 }]}>
-                  <Text style={styles.fieldLabel}>Gender</Text>
-                  <View style={styles.genderRow}>
-                    {['male', 'female'].map(g => (
-                      <TouchableOpacity key={g} style={[styles.genderBtn, gender === g && styles.genderBtnOn]} onPress={() => setGender(g)}>
-                        <Text style={[styles.genderText, gender === g && { color: colors.accent3 }]}>{g === 'male' ? '♂ Male' : '♀ Female'}</Text>
+                <View style={s.unitGroup}>
+                  <Text style={s.fieldLabel}>Height unit</Text>
+                  <View style={s.unitBtns}>
+                    {['cm','in','ft'].map(u => (
+                      <TouchableOpacity key={u} style={[s.unitBtn, heightUnit===u && s.unitBtnOn]} onPress={()=>setHeightUnit(u)}>
+                        <Text style={[s.unitBtnText, heightUnit===u && {color:colors.accent3}]}>{u}</Text>
                       </TouchableOpacity>
                     ))}
                   </View>
                 </View>
               </View>
 
-              <View style={styles.field}>
-                <Text style={styles.fieldLabel}>Activity Level</Text>
-                <View style={styles.actGrid}>
-                  {ACTIVITIES.map(a => (
-                    <TouchableOpacity key={a.key} style={[styles.actBtn, activity === a.key && styles.actBtnOn]} onPress={() => setActivity(a.key)}>
-                      <Text style={[styles.actText, activity === a.key && { color: colors.accent3 }]}>{a.label}</Text>
-                    </TouchableOpacity>
-                  ))}
+              <View style={s.row}>
+                <View style={[s.field, {flex:1, marginRight:8}]}>
+                  <Text style={s.fieldLabel}>Age</Text>
+                  <TextInput style={s.input} value={age} onChangeText={setAge} keyboardType="numeric" placeholder="25" placeholderTextColor={colors.text3} />
+                </View>
+                <View style={[s.field, {flex:1}]}>
+                  <Text style={s.fieldLabel}>Weight ({weightUnit})</Text>
+                  <TextInput style={s.input} value={weight} onChangeText={setWeight} keyboardType="numeric" placeholder={weightPlaceholder} placeholderTextColor={colors.text3} />
                 </View>
               </View>
 
-              <TouchableOpacity style={styles.obtn} onPress={() => setStep(3)}>
-                <Text style={styles.obtnText}>Next →</Text>
-              </TouchableOpacity>
-            </View>
-          )}
+              <View style={s.row}>
+                <View style={[s.field, {flex:1, marginRight:8}]}>
+                  <Text style={s.fieldLabel}>Height ({heightUnit})</Text>
+                  <TextInput style={s.input} value={height} onChangeText={setHeight} keyboardType="numeric" placeholder={heightPlaceholder} placeholderTextColor={colors.text3} />
+                </View>
+                <View style={[s.field, {flex:1}]}>
+                  <Text style={s.fieldLabel}>Gender</Text>
+                  <View style={s.genderRow}>
+                    {['male','female'].map(g => (
+                      <TouchableOpacity key={g} style={[s.genderBtn, gender===g && s.genderBtnOn]} onPress={()=>setGender(g)}>
+                        <Text style={[s.genderText, gender===g && {color:colors.accent3}]}>{g==='male'?'♂':'♀'}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+              </View>
 
-          {/* STEP 3: Goal */}
-          {step === 3 && (
-            <View style={styles.page}>
-              <Text style={styles.logo}>ProteIN <Text style={styles.logoSub}>AI</Text></Text>
-              <Text style={styles.title}>What's your goal?</Text>
-              <Text style={styles.sub}>We'll customize your nutrition plan and protein targets.</Text>
-
-              {GOALS.map(g => (
-                <TouchableOpacity key={g.key} style={[styles.goalBtn, goal === g.key && styles.goalBtnOn]} onPress={() => setGoal(g.key)}>
-                  <Text style={{ fontSize: 24, marginBottom: 4 }}>{g.icon}</Text>
-                  <Text style={styles.goalLabel}>{g.label}</Text>
-                  <Text style={styles.goalDesc}>{g.desc}</Text>
+              <Text style={s.fieldLabel}>Activity Level</Text>
+              {ACTIVITIES.map(a => (
+                <TouchableOpacity key={a.key} style={[s.actBtn, activity===a.key && s.actBtnOn]} onPress={()=>setActivity(a.key)}>
+                  <Text style={[s.actLabel, activity===a.key && {color:colors.accent3}]}>{a.label}</Text>
+                  <Text style={s.actDesc}>{a.desc}</Text>
                 </TouchableOpacity>
               ))}
 
-              <TouchableOpacity style={[styles.obtn, { marginTop: 20 }]} onPress={handleCalc}>
-                <Text style={styles.obtnText}>Calculate My Goals →</Text>
+              <PrimaryButton title="Next →" onPress={() => setStep(3)} style={{marginTop:16}} />
+            </View>
+          )}
+
+          {/* Step 3 — Goals (multi-select) */}
+          {step === 3 && (
+            <View style={s.page}>
+              <Text style={s.logo}>ProteIN <Text style={s.logoSub}>AI</Text></Text>
+              <Text style={s.title}>Your goals</Text>
+              <Text style={s.sub}>Select all that apply — we'll blend them together.</Text>
+
+              {GOALS_LIST.map(g => {
+                const on = selectedGoals.includes(g.key);
+                return (
+                  <TouchableOpacity key={g.key} style={[s.goalCard, on && s.goalCardOn]} onPress={() => toggleGoal(g.key)} activeOpacity={0.8}>
+                    <View style={s.goalLeft}>
+                      <Text style={{fontSize:28}}>{g.icon}</Text>
+                      <View style={{marginLeft:12}}>
+                        <Text style={[s.goalLabel, on && {color:colors.accent}]}>{g.label}</Text>
+                        <Text style={s.goalDesc}>{g.desc}</Text>
+                      </View>
+                    </View>
+                    <View style={[s.checkbox, on && s.checkboxOn]}>
+                      {on && <Text style={{color:'#0a0a0f', fontWeight:'700', fontSize:14}}>✓</Text>}
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+
+              <PrimaryButton title="Calculate My Goals →" onPress={handleCalc} style={{marginTop:20}} />
+              <TouchableOpacity style={s.backLink} onPress={() => setStep(2)}>
+                <Text style={s.backLinkText}>‹ Back</Text>
               </TouchableOpacity>
             </View>
           )}
 
-          {/* STEP 4: Results */}
-          {step === 4 && calcGoals && (
-            <View style={styles.page}>
-              <Text style={styles.logo}>ProteIN <Text style={styles.logoSub}>AI</Text></Text>
-              <Text style={styles.title}>Your daily targets</Text>
-              <Text style={styles.sub}>AI-calculated based on your body and goals.</Text>
+          {/* Step 4 — Results */}
+          {step === 4 && calcResult && (
+            <View style={s.page}>
+              <Text style={s.logo}>ProteIN <Text style={s.logoSub}>AI</Text></Text>
+              <Text style={s.title}>Your daily targets</Text>
+              <Text style={s.sub}>Tailored to your body and goals.</Text>
 
-              <View style={styles.rcard}>
-                <Text style={styles.rcardTitle}>Daily Nutrition Goals</Text>
+              <View style={s.resultCard}>
                 {[
-                  { label: 'Calories', val: calcGoals.calories.toLocaleString(), unit: 'kcal' },
-                  { label: 'Protein', val: calcGoals.protein, unit: 'g' },
-                  { label: 'Carbs', val: calcGoals.carbs, unit: 'g' },
-                  { label: 'Fat', val: calcGoals.fat, unit: 'g' },
+                  {label:'Calories', val:`${calcResult.calories.toLocaleString()} kcal`},
+                  {label:'Protein',  val:`${calcResult.protein}g`},
+                  {label:'Carbs',    val:`${calcResult.carbs}g`},
+                  {label:'Fat',      val:`${calcResult.fat}g`},
                 ].map(r => (
-                  <View key={r.label} style={styles.rrow}>
-                    <Text style={styles.rlabel}>{r.label}</Text>
-                    <Text style={styles.rval}>{r.val} <Text style={styles.runit}>{r.unit}</Text></Text>
+                  <View key={r.label} style={s.resultRow}>
+                    <Text style={s.resultLabel}>{r.label}</Text>
+                    <Text style={s.resultVal}>{r.val}</Text>
                   </View>
                 ))}
               </View>
 
-              <View style={styles.proteinNote}>
-                <Text style={styles.proteinNoteText}>
-                  💡 <Text style={{ color: colors.text, fontWeight: '700' }}>Protein is your #1 priority.</Text> Hitting your protein goal ensures muscle retention and growth.
+              <View style={s.goalChips}>
+                {selectedGoals.map(g => {
+                  const found = GOALS_LIST.find(gl => gl.key === g);
+                  return (
+                    <View key={g} style={s.goalChip}>
+                      <Text style={s.goalChipText}>{found?.icon} {found?.label}</Text>
+                    </View>
+                  );
+                })}
+              </View>
+
+              <View style={s.proteinNote}>
+                <Text style={s.proteinNoteText}>
+                  💡 <Text style={{color:colors.text,fontWeight:'700'}}>Protein is your #1 priority.</Text> Hitting your protein goal daily is the most important lever for every goal you selected.
                 </Text>
               </View>
 
-              <TouchableOpacity style={styles.obtn} onPress={handleStart}>
-                <Text style={styles.obtnText}>Start Tracking →</Text>
+              <PrimaryButton title="Start Tracking 🚀" onPress={handleStart} />
+              <TouchableOpacity style={s.backLink} onPress={() => setStep(3)}>
+                <Text style={s.backLinkText}>‹ Back</Text>
               </TouchableOpacity>
             </View>
           )}
-
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
 
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.bg },
-  scroll: { flexGrow: 1 },
-  page: { padding: 24, paddingTop: 50, flex: 1, minHeight: 700 },
-  logo: { fontSize: 24, fontWeight: '700', color: colors.accent, letterSpacing: -1, marginBottom: 40 },
-  logoSub: { color: colors.text2, fontWeight: '400' },
-  title: { fontSize: 30, fontWeight: '700', color: colors.text, lineHeight: 36, marginBottom: 10, letterSpacing: -0.5 },
-  sub: { color: colors.text2, fontSize: 14, lineHeight: 22, marginBottom: 30 },
-  heroEmoji: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 40 },
-  obtn: { backgroundColor: colors.accent, borderRadius: radius.sm, padding: 15, alignItems: 'center', marginTop: 10 },
-  obtnText: { color: '#0a0a0f', fontWeight: '700', fontSize: 16 },
-  demoBtn: { marginTop: 12, padding: 12, alignItems: 'center' },
-  demoBtnText: { color: colors.text2, fontSize: 14 },
-  row: { flexDirection: 'row', marginBottom: 14 },
-  field: { marginBottom: 14 },
-  fieldLabel: { fontSize: 11, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 1, color: colors.text2, marginBottom: 7 },
-  input: { backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, borderRadius: radius.sm, padding: 13, fontSize: 15, color: colors.text },
-  genderRow: { flexDirection: 'row', gap: 8 },
-  genderBtn: { flex: 1, backgroundColor: colors.card, borderWidth: 2, borderColor: colors.border, borderRadius: radius.sm, padding: 11, alignItems: 'center' },
-  genderBtnOn: { borderColor: colors.accent3, backgroundColor: 'rgba(0,212,255,0.08)' },
-  genderText: { color: colors.text, fontSize: 13, fontWeight: '500' },
-  actGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  actBtn: { width: '48%', backgroundColor: colors.card, borderWidth: 2, borderColor: colors.border, borderRadius: radius.sm, padding: 12, alignItems: 'center' },
-  actBtnOn: { borderColor: colors.accent3, backgroundColor: 'rgba(0,212,255,0.08)' },
-  actText: { color: colors.text, fontSize: 13, fontWeight: '500' },
-  goalBtn: { backgroundColor: colors.card, borderWidth: 2, borderColor: colors.border, borderRadius: radius.sm, padding: 16, marginBottom: 10 },
-  goalBtnOn: { borderColor: colors.accent, backgroundColor: 'rgba(126,255,160,0.08)' },
-  goalLabel: { fontSize: 14, fontWeight: '700', color: colors.text, marginBottom: 3 },
-  goalDesc: { fontSize: 12, color: colors.text2 },
-  rcard: { backgroundColor: colors.card, borderRadius: radius.lg, padding: 20, marginBottom: 16, borderWidth: 1, borderColor: colors.border },
-  rcardTitle: { fontSize: 11, textTransform: 'uppercase', letterSpacing: 1, color: colors.text2, marginBottom: 14 },
-  rrow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: colors.border },
-  rlabel: { fontSize: 13, color: colors.text2 },
-  rval: { fontSize: 20, fontWeight: '700', color: colors.accent },
-  runit: { fontSize: 13, color: colors.text2, fontWeight: '400' },
-  proteinNote: { backgroundColor: colors.card, borderRadius: radius.sm, padding: 14, marginBottom: 16, borderWidth: 1, borderColor: colors.border },
-  proteinNoteText: { fontSize: 13, color: colors.text2, lineHeight: 20 },
+const s = StyleSheet.create({
+  safe: { flex:1, backgroundColor: colors.bg },
+  scroll: { flexGrow:1 },
+  page: { padding:24, paddingTop:50 },
+  logo: { fontSize:22, fontWeight:'700', color:colors.accent, marginBottom:30, letterSpacing:-1 },
+  logoSub: { color:colors.text2, fontWeight:'400' },
+  hero: { fontSize:72, textAlign:'center', marginVertical:30 },
+  title: { fontSize:28, fontWeight:'700', color:colors.text, lineHeight:34, marginBottom:8, letterSpacing:-0.5 },
+  sub: { fontSize:14, color:colors.text2, lineHeight:22, marginBottom:24 },
+  unitsRow: { flexDirection:'row', gap:12, marginBottom:16 },
+  unitGroup: { flex:1 },
+  unitBtns: { flexDirection:'row', gap:6, marginTop:6 },
+  unitBtn: { flex:1, backgroundColor:colors.card, borderWidth:1, borderColor:colors.border, borderRadius:8, paddingVertical:8, alignItems:'center' },
+  unitBtnOn: { borderColor:colors.accent3, backgroundColor:'rgba(0,212,255,0.1)' },
+  unitBtnText: { fontSize:12, fontWeight:'700', color:colors.text2 },
+  row: { flexDirection:'row', marginBottom:12 },
+  field: { marginBottom:12 },
+  fieldLabel: { fontSize:11, fontWeight:'700', textTransform:'uppercase', letterSpacing:1, color:colors.text2, marginBottom:6 },
+  input: { backgroundColor:colors.card, borderWidth:1, borderColor:colors.border, borderRadius:radius.sm, padding:12, fontSize:15, color:colors.text },
+  genderRow: { flexDirection:'row', gap:8, marginTop:0 },
+  genderBtn: { flex:1, backgroundColor:colors.card, borderWidth:2, borderColor:colors.border, borderRadius:radius.sm, padding:12, alignItems:'center', justifyContent:'center' },
+  genderBtnOn: { borderColor:colors.accent3, backgroundColor:'rgba(0,212,255,0.1)' },
+  genderText: { color:colors.text, fontSize:18 },
+  actBtn: { backgroundColor:colors.card, borderWidth:2, borderColor:colors.border, borderRadius:radius.sm, padding:12, marginBottom:8, flexDirection:'row', justifyContent:'space-between', alignItems:'center' },
+  actBtnOn: { borderColor:colors.accent3, backgroundColor:'rgba(0,212,255,0.08)' },
+  actLabel: { fontSize:14, fontWeight:'700', color:colors.text },
+  actDesc: { fontSize:11, color:colors.text2 },
+  goalCard: { backgroundColor:colors.card, borderWidth:2, borderColor:colors.border, borderRadius:radius.sm, padding:16, marginBottom:10, flexDirection:'row', justifyContent:'space-between', alignItems:'center' },
+  goalCardOn: { borderColor:colors.accent, backgroundColor:'rgba(126,255,160,0.06)' },
+  goalLeft: { flexDirection:'row', alignItems:'center', flex:1 },
+  goalLabel: { fontSize:15, fontWeight:'700', color:colors.text, marginBottom:2 },
+  goalDesc: { fontSize:12, color:colors.text2 },
+  checkbox: { width:24, height:24, borderRadius:6, borderWidth:2, borderColor:colors.border, alignItems:'center', justifyContent:'center' },
+  checkboxOn: { backgroundColor:colors.accent, borderColor:colors.accent },
+  resultCard: { backgroundColor:colors.card, borderRadius:radius.lg, padding:18, marginBottom:14, borderWidth:1, borderColor:colors.border },
+  resultRow: { flexDirection:'row', justifyContent:'space-between', paddingVertical:10, borderBottomWidth:1, borderBottomColor:colors.border },
+  resultLabel: { fontSize:14, color:colors.text2 },
+  resultVal: { fontSize:20, fontWeight:'700', color:colors.accent },
+  goalChips: { flexDirection:'row', flexWrap:'wrap', gap:8, marginBottom:14 },
+  goalChip: { backgroundColor:'rgba(126,255,160,0.15)', borderRadius:20, paddingHorizontal:12, paddingVertical:5, borderWidth:1, borderColor:'rgba(126,255,160,0.3)' },
+  goalChipText: { fontSize:12, color:colors.accent, fontWeight:'600' },
+  proteinNote: { backgroundColor:'rgba(0,212,255,0.06)', borderRadius:radius.sm, padding:14, marginBottom:16, borderWidth:1, borderColor:'rgba(0,212,255,0.2)' },
+  proteinNoteText: { fontSize:13, color:colors.text2, lineHeight:20 },
+  backLink: { marginTop:14, alignItems:'center', padding:8 },
+  backLinkText: { color:colors.text2, fontSize:14 },
 });
