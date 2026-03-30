@@ -5,21 +5,31 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
-    "splash": {
-      "backgroundColor": "#0a0a0f"
-    },
+    "splash": { "backgroundColor": "#0a0a0f" },
+    "plugins": [
+      [
+        "expo-camera",
+        { "cameraPermission": "Allow ProteIN AI to access your camera to scan meals." }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#7effa0"
+        }
+      ]
+    ],
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.protein.ai"
+      "bundleIdentifier": "com.protein.ai",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Used to scan and identify your meals.",
+        "NSPhotoLibraryUsageDescription": "Used to select meal photos."
+      }
     },
     "android": {
-      "adaptiveIcon": {
-        "backgroundColor": "#0a0a0f"
-      },
-      "package": "com.protein.ai"
-    },
-    "web": {
-      "bundler": "metro"
+      "package": "com.protein.ai",
+      "permissions": ["CAMERA", "RECORD_AUDIO", "RECEIVE_BOOT_COMPLETED", "VIBRATE"]
     }
   }
 }

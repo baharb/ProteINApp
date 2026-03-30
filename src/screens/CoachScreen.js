@@ -7,11 +7,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, radius } from '../data/constants';
 import { useApp } from '../hooks/useApp';
 
-// ─── YOUR SERVER URL ────────────────────────────────────────────────────────
-// Local testing:  'http://YOUR_LOCAL_IP:3000'  (e.g. http://192.168.1.5:3000)
-// After deploying: 'https://your-app.onrender.com' or Railway URL
-const SERVER_URL = 'https://proteinserver.onrender.com';
-// ────────────────────────────────────────────────────────────────────────────
+// ─── YOUR SERVER URL ─────────────────────────────────────────────────────────
+// Local:   'http://YOUR_LOCAL_IP:3000'  (e.g. http://192.168.1.5:3000)
+// Deployed:'https://your-app.onrender.com'
+const SERVER_URL = 'https://your-server-url.onrender.com';
+// ─────────────────────────────────────────────────────────────────────────────
 
 const QUICK_QS = [
   'How do I hit my protein goal today?',
@@ -22,27 +22,26 @@ const QUICK_QS = [
 
 export default function CoachScreen({ navigation }) {
   const { today, goals, goals2, profile } = useApp();
-  const [messages, setMessages]   = useState([]);
-  const [input, setInput]         = useState('');
-  const [thinking, setThinking]   = useState(false);
-  const [error, setError]         = useState(null);
+  const [messages,  setMessages]  = useState([]);
+  const [input,     setInput]     = useState('');
+  const [thinking,  setThinking]  = useState(false);
+  const [error,     setError]     = useState(null);
   const scrollRef = useRef(null);
 
-  // Context sent to server with every message
   function buildProfile() {
     return {
-      goals: goals2 || [],
+      goals:        goals2 || [],
       goalCalories: goals.calories,
       goalProtein:  goals.protein,
       goalCarbs:    goals.carbs,
       goalFat:      goals.fat,
       todayCalories: today.calories,
       todayProtein:  today.protein,
-      meals: today.meals.map(m => m.name),
-      age:       profile?.age,
-      weightKg:  profile?.weightKg,
-      heightCm:  profile?.heightCm,
-      gender:    profile?.gender,
+      meals:        today.meals.map(m => m.name),
+      age:          profile?.age,
+      weightKg:     profile?.weight_kg,
+      heightCm:     profile?.height_cm,
+      gender:       profile?.gender,
     };
   }
 
@@ -52,9 +51,9 @@ export default function CoachScreen({ navigation }) {
     setInput('');
     setError(null);
 
-    const newUserMsg = { role: 'user', content: text };
-    const updatedHistory = [...messages, newUserMsg];
-    setMessages(updatedHistory);
+    const newMsg = { role: 'user', content: text };
+    const updated = [...messages, newMsg];
+    setMessages(updated);
     setThinking(true);
     setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
 
@@ -62,24 +61,20 @@ export default function CoachScreen({ navigation }) {
       const res = await fetch(`${SERVER_URL}/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          messages: updatedHistory,
-          profile: buildProfile(),
-        }),
+        body: JSON.stringify({ messages: updated, profile: buildProfile() }),
       });
-
       if (!res.ok) {
         const err = await res.json();
         throw new Error(err.error || `Server error ${res.status}`);
       }
-
       const data = await res.json();
       setMessages(prev => [...prev, { role: 'assistant', content: data.reply }]);
-
     } catch (err) {
-      setError(err.message.includes('fetch')
-        ? 'Cannot reach server. Check your SERVER_URL in CoachScreen.js'
-        : err.message);
+      setError(
+        err.message.includes('fetch') || err.message.includes('Network')
+          ? 'Cannot reach server. Check SERVER_URL in CoachScreen.js and make sure the server is running.'
+          : err.message
+      );
     } finally {
       setThinking(false);
       setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
@@ -87,7 +82,7 @@ export default function CoachScreen({ navigation }) {
   }
 
   const displayMessages = [
-    { role: 'assistant', content: "Hey! I'm your AI nutrition coach 💪 Ask me anything about your diet, protein targets, or fitness goals!" },
+    { role: 'assistant', content: "Hey! I'm your AI nutrition coach powered by Llama 3.1 💪\n\nI know your goals, today's intake, and your body stats. Ask me anything!" },
     ...messages,
   ];
 
@@ -97,7 +92,10 @@ export default function CoachScreen({ navigation }) {
         <TouchableOpacity onPress={() => navigation.goBack()} style={s.backBtn}>
           <Text style={s.backText}>‹ Back</Text>
         </TouchableOpacity>
-        <Text style={s.title}>🤖 AI Coach</Text>
+        <View style={s.headerCenter}>
+          <Text style={s.title}>🤖 AI Coach</Text>
+          <Text style={s.titleSub}>Powered by Llama 3.1 70B</Text>
+        </View>
         <View style={{ width: 60 }} />
       </View>
 
@@ -129,12 +127,11 @@ export default function CoachScreen({ navigation }) {
           )}
 
           {error && (
-            <View style={s.errorBubble}>
-              <Text style={s.errorText}>⚠️ {error}</Text>
+            <View style={s.errorBox}>
+              <Text style={s.errorTxt}>⚠️ {error}</Text>
             </View>
           )}
 
-          {/* Quick questions — show only at start */}
           {messages.length === 0 && !thinking && (
             <View style={{ gap: 8, marginTop: 4 }}>
               <Text style={{ fontSize: 12, color: colors.text2, marginBottom: 2 }}>Try asking:</Text>
@@ -170,9 +167,11 @@ export default function CoachScreen({ navigation }) {
 const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16, borderBottomWidth: 1, borderBottomColor: colors.border },
-  backBtn: { padding: 4 },
+  backBtn: { padding: 4, width: 60 },
   backText: { color: colors.accent, fontSize: 16, fontWeight: '600' },
-  title: { fontSize: 17, fontWeight: '700', color: colors.text },
+  headerCenter: { alignItems: 'center' },
+  title: { fontSize: 16, fontWeight: '700', color: colors.text },
+  titleSub: { fontSize: 10, color: colors.text3, marginTop: 1 },
   msgs: { flex: 1 },
   msgWrap: { maxWidth: '85%' },
   userWrap: { alignSelf: 'flex-end' },
@@ -181,8 +180,8 @@ const s = StyleSheet.create({
   userBubble: { backgroundColor: colors.accent, borderTopRightRadius: 4 },
   aiBubble: { backgroundColor: colors.card, borderTopLeftRadius: 4, borderWidth: 1, borderColor: colors.border, padding: 12, borderRadius: 16 },
   bubbleText: { color: colors.text, fontSize: 14, lineHeight: 22 },
-  errorBubble: { backgroundColor: 'rgba(255,140,66,0.12)', borderRadius: 12, padding: 12, borderWidth: 1, borderColor: 'rgba(255,140,66,0.3)' },
-  errorText: { color: colors.orange, fontSize: 13, lineHeight: 20 },
+  errorBox: { backgroundColor: 'rgba(255,140,66,0.1)', borderRadius: 12, padding: 12, borderWidth: 1, borderColor: 'rgba(255,140,66,0.3)' },
+  errorTxt: { color: colors.orange, fontSize: 13, lineHeight: 20 },
   quickQ: { backgroundColor: colors.card2, borderRadius: radius.sm, padding: 12, borderWidth: 1, borderColor: colors.border },
   quickQText: { fontSize: 13, color: colors.text, fontWeight: '500' },
   inputRow: { flexDirection: 'row', padding: 12, gap: 8, borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.bg2 },
