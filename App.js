@@ -1,106 +1,111 @@
-import React, { useState, useEffect } from 'react';
+import 'react-native-url-polyfill/auto';
+import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { enableScreens } from 'react-native-screens';
-import { StatusBar } from 'expo-status-bar';
+import { View, Text, TouchableOpacity, ActivityIndicator, StyleSheet } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { Text, View, StyleSheet, ActivityIndicator } from 'react-native';
-
 import { AppProvider, useApp } from './src/hooks/useApp';
 import { colors } from './src/data/constants';
 
-import AuthScreen        from './src/screens/AuthScreen';
-import OnboardingScreen  from './src/screens/OnboardingScreen';
-import DashboardScreen   from './src/screens/DashboardScreen';
-import ScanScreen        from './src/screens/ScanScreen';
-import AddFoodScreen     from './src/screens/AddFoodScreen';
-import ProgressScreen    from './src/screens/ProgressScreen';
-import ProfileScreen     from './src/screens/ProfileScreen';
-import CoachScreen       from './src/screens/CoachScreen';
-
-enableScreens();
+import AuthScreen      from './src/screens/AuthScreen';
+import OnboardingScreen from './src/screens/OnboardingScreen';
+import DashboardScreen from './src/screens/DashboardScreen';
+import ScanScreen      from './src/screens/ScanScreen';
+import AddFoodScreen   from './src/screens/AddFoodScreen';
+import ProgressScreen  from './src/screens/ProgressScreen';
+import ProfileScreen   from './src/screens/ProfileScreen';
+import CoachScreen     from './src/screens/CoachScreen';
+import ProgramScreen   from './src/screens/ProgramScreen';
 
 const Tab   = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
 
 function TabIcon({ emoji, label, focused }) {
   return (
-    <View style={ti.wrap}>
-      <Text style={[ti.emoji, { opacity: focused ? 1 : 0.4 }]}>{emoji}</Text>
-      <Text style={[ti.label, { color: focused ? colors.accent : colors.text3 }]}>{label}</Text>
+    <View style={{ alignItems:'center', paddingTop:4 }}>
+      <Text style={{ fontSize:20, opacity: focused ? 1 : 0.5 }}>{emoji}</Text>
+      <Text style={{ fontSize:9, color: focused ? colors.accent : colors.text3, marginTop:2, fontWeight: focused?'700':'400' }}>{label}</Text>
     </View>
   );
 }
-const ti = StyleSheet.create({
-  wrap:  { alignItems: 'center', justifyContent: 'center', paddingTop: 6 },
-  emoji: { fontSize: 20 },
-  label: { fontSize: 9, fontWeight: '700', marginTop: 3, textTransform: 'uppercase', letterSpacing: 0.5 },
+
+// Guest login button shown in tab bar header area
+function GuestLoginButton({ navigation }) {
+  const { signOut } = useApp();
+  return (
+    <TouchableOpacity
+      style={gl.btn}
+      onPress={() => signOut()} // signOut resets isGuest, goes back to Auth
+      activeOpacity={0.85}
+    >
+      <Text style={gl.txt}>🔑 Login</Text>
+    </TouchableOpacity>
+  );
+}
+const gl = StyleSheet.create({
+  btn:{ backgroundColor:'rgba(126,255,160,0.15)', borderRadius:20, paddingHorizontal:14, paddingVertical:6, borderWidth:1, borderColor:'rgba(126,255,160,0.3)' },
+  txt:{ color:colors.accent, fontWeight:'700', fontSize:13 },
 });
 
 function MainTabs() {
+  const { isGuest } = useApp();
   return (
     <Tab.Navigator
       screenOptions={{
         headerShown: false,
+        tabBarStyle: { backgroundColor:colors.bg2, borderTopColor:colors.border, height:60, paddingBottom:8 },
         tabBarShowLabel: false,
-        tabBarStyle: {
-          backgroundColor: colors.bg2,
-          borderTopColor: colors.border,
-          borderTopWidth: 1,
-          height: 68,
-        },
       }}
     >
-      {[
-        { name: 'HomeTab',     comp: DashboardScreen, emoji: '🏠', label: 'Home'     },
-        { name: 'ScanTab',     comp: ScanScreen,      emoji: '📷', label: 'Scan'     },
-        { name: 'AddTab',      comp: AddFoodScreen,   emoji: '➕', label: 'Add'      },
-        { name: 'ProgressTab', comp: ProgressScreen,  emoji: '📊', label: 'Progress' },
-        { name: 'ProfileTab',  comp: ProfileScreen,   emoji: '👤', label: 'Profile'  },
-      ].map(({ name, comp, emoji, label }) => (
-        <Tab.Screen key={name} name={name} component={comp}
-          options={{ tabBarIcon: ({ focused }) => <TabIcon emoji={emoji} label={label} focused={focused} /> }}
-        />
-      ))}
+      <Tab.Screen name="HomeTab"     component={DashboardScreen} options={{ tabBarIcon:({focused})=><TabIcon emoji="🏠" label="Home"     focused={focused}/> }} />
+      <Tab.Screen name="ScanTab"     component={ScanScreen}      options={{ tabBarIcon:({focused})=><TabIcon emoji="📷" label="Scan"     focused={focused}/> }} />
+      <Tab.Screen name="AddTab"      component={AddFoodScreen}   options={{ tabBarIcon:({focused})=><TabIcon emoji="➕" label="Add"      focused={focused}/> }} />
+      <Tab.Screen name="ProgramTab"  component={ProgramScreen}   options={{ tabBarIcon:({focused})=><TabIcon emoji="📋" label="Program"  focused={focused}/> }} />
+      <Tab.Screen name="ProgressTab" component={ProgressScreen}  options={{ tabBarIcon:({focused})=><TabIcon emoji="📊" label="Progress" focused={focused}/> }} />
+      <Tab.Screen name="ProfileTab"  component={ProfileScreen}   options={{
+        tabBarIcon: ({focused}) => <TabIcon emoji={isGuest?"🔑":"👤"} label={isGuest?"Login":"Profile"} focused={focused}/>,
+      }} />
     </Tab.Navigator>
   );
 }
 
-function AppNavigator() {
-  const { session, profile, loading } = useApp();
-  const [onboarded, setOnboarded] = useState(false);
-
-  // Reset onboarded when profile loads from Supabase
-  useEffect(() => {
-    if (profile) setOnboarded(true);
-  }, [profile]);
+function RootNavigator() {
+  const { session, isGuest, profile, loading } = useApp();
 
   if (loading) {
     return (
-      <View style={{ flex: 1, backgroundColor: colors.bg, alignItems: 'center', justifyContent: 'center' }}>
-        <Text style={{ fontSize: 48, marginBottom: 20 }}>🥗</Text>
+      <View style={{ flex:1, backgroundColor:colors.bg, alignItems:'center', justifyContent:'center' }}>
+        <Text style={{ fontSize:32, marginBottom:16 }}>🥗</Text>
         <ActivityIndicator color={colors.accent} size="large" />
-        <Text style={{ color: colors.text2, marginTop: 16, fontSize: 14 }}>Loading your data…</Text>
       </View>
     );
   }
 
-  // Not logged in → Auth
-  if (!session) return <AuthScreen />;
+  // Not logged in and not guest → show auth
+  if (!session && !isGuest) return <AuthScreen />;
 
-  // Logged in but no profile yet → Onboarding
-  if (!onboarded) return <OnboardingScreen onComplete={() => setOnboarded(true)} />;
+  // Guest mode — show main tabs (ProfileTab shows login button)
+  if (isGuest) {
+    return (
+      <Stack.Navigator screenOptions={{ headerShown:false }}>
+        <Stack.Screen name="Main"    component={MainTabs} />
+        <Stack.Screen name="Coach"   component={CoachScreen} />
+        <Stack.Screen name="Program" component={ProgramScreen} />
+      </Stack.Navigator>
+    );
+  }
 
-  // Logged in + profile → Main app
+  // Logged in but no profile → onboarding
+  if (session && !profile?.goal_calories) {
+    return <OnboardingScreen />;
+  }
+
   return (
-    <Stack.Navigator screenOptions={{ headerShown: false }}>
-      <Stack.Screen name="Main" component={MainTabs} />
-      <Stack.Screen
-        name="Coach"
-        component={CoachScreen}
-        options={{ presentation: 'modal', animation: 'slide_from_bottom' }}
-      />
+    <Stack.Navigator screenOptions={{ headerShown:false }}>
+      <Stack.Screen name="Main"    component={MainTabs} />
+      <Stack.Screen name="Coach"   component={CoachScreen} />
+      <Stack.Screen name="Program" component={ProgramScreen} />
     </Stack.Navigator>
   );
 }
@@ -110,8 +115,7 @@ export default function App() {
     <SafeAreaProvider>
       <AppProvider>
         <NavigationContainer>
-          <StatusBar style="light" backgroundColor={colors.bg} />
-          <AppNavigator />
+          <RootNavigator />
         </NavigationContainer>
       </AppProvider>
     </SafeAreaProvider>

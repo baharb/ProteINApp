@@ -1,163 +1,526 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import {
-  View, Text, TextInput, TouchableOpacity, ScrollView,
-  StyleSheet, KeyboardAvoidingView, Platform, ActivityIndicator,
+  View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet,
+  KeyboardAvoidingView, Platform, ActivityIndicator, Modal, Alert,
+  useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, radius, MEAL_OPTIONS } from '../data/constants';
 import { useApp } from '../hooks/useApp';
-import { ScreenHeader, PrimaryButton } from '../components/UI';
+import { ScreenHeader, PrimaryButton, SecondaryButton } from '../components/UI';
 import { searchFood } from '../lib/foodApi';
+import { searchLocalDB } from '../data/nutritionDB';
 
 function getSlot() {
   const h = new Date().getHours();
   if (h < 10) return 0; if (h < 14) return 1; if (h < 19) return 2; return 3;
 }
 
+// ── Serving size picker modal ─────────────────────────────────────────────
+function ServingModal({ food, onAdd, onClose }) {
+  const [grams, setGrams] = useState('100');
+  const PRESETS = ['50','100','150','200','250','300'];
+  const g = parseFloat(grams) || 0;
+  const factor = g / 100;
+
+  return (
+    <Modal visible transparent animationType="slide" onRequestClose={onClose}>
+      <View style={ms.overlay}>
+        <View style={ms.sheet}>
+          <View style={ms.handle} />
+          <Text style={ms.title} numberOfLines={2}>{food.name}</Text>
+          <Text style={ms.sub}>Per 100g · adjust serving size below</Text>
+          <View style={ms.macroRow}>
+            {[{v:food.cal,l:'kcal',c:colors.text},{v:food.p+'g',l:'protein',c:colors.accent},{v:food.c+'g',l:'carbs',c:colors.accent3},{v:food.f+'g',l:'fat',c:colors.orange}].map(m => (
+              <View key={m.l} style={ms.macroBox}>
+                <Text style={[ms.macroVal,{color:m.c}]}>{m.v}</Text>
+                <Text style={ms.macroLabel}>{m.l}</Text>
+              </View>
+            ))}
+          </View>
+          <Text style={ms.servingLabel}>Serving size</Text>
+          <View style={ms.presetRow}>
+            {PRESETS.map(p => (
+              <TouchableOpacity key={p} style={[ms.preset, grams===p && ms.presetOn]} onPress={() => setGrams(p)}>
+                <Text style={[ms.presetTxt, grams===p && {color:colors.accent}]}>{p}g</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          <TextInput style={ms.gramInput} value={grams} onChangeText={setGrams} keyboardType="numeric" placeholder="Custom grams" placeholderTextColor={colors.text3} selectTextOnFocus />
+          {g > 0 && (
+            <View style={ms.calcCard}>
+              <Text style={ms.calcTitle}>For {grams}g:</Text>
+              <View style={ms.calcRow}>
+                {[
+                  {l:'Calories',v:Math.round(food.cal*factor),unit:'kcal',c:colors.text},
+                  {l:'Protein', v:Math.round(food.p*factor),  unit:'g',   c:colors.accent},
+                  {l:'Carbs',   v:Math.round(food.c*factor),  unit:'g',   c:colors.accent3},
+                  {l:'Fat',     v:Math.round(food.f*factor),  unit:'g',   c:colors.orange},
+                ].map(m => (
+                  <View key={m.l} style={ms.calcItem}>
+                    <Text style={[ms.calcVal,{color:m.c}]}>{m.v}{m.unit}</Text>
+                    <Text style={ms.calcLabel}>{m.l}</Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+          )}
+          <PrimaryButton title={`Add ${grams}g to Today`} onPress={() => { if (!g) return; onAdd(food, g); }} style={{ marginTop:16 }} />
+          <SecondaryButton title="Cancel" onPress={onClose} style={{ marginTop:8 }} />
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+// ── Main screen ───────────────────────────────────────────────────────────
 export default function AddFoodScreen({ navigation }) {
   const { addMeal, today, goals } = useApp();
-  const [query,      setQuery]      = useState('');
-  const [results,    setResults]    = useState([]);
-  const [searching,  setSearching]  = useState(false);
-  const [qaCal, setQaCal] = useState('');
-  const [qaP,   setQaP]   = useState('');
-  const [qaC,   setQaC]   = useState('');
-  const [qaF,   setQaF]   = useState('');
+  const { width, height } = useWindowDimensions();
+  const isLandscape = width > height;
 
+  const [query,        setQuery]        = useState('');
+  const [results,      setResults]      = useState([]);
+  const [searching,    setSearching]    = useState(false);
+  const [selectedFood, setSelectedFood] = useState(null);
+  const [tab,          setTab]          = useState('search');
+  // Manual
+  const [manualName,   setManualName]   = useState('');
+  const [manualGrams,  setManualGrams]  = useState('100');
+  const [manualFood,   setManualFood]   = useState(null);
+  const [manualSearch, setManualSearch] = useState('');
+  const [manualDropdown, setManualDropdown] = useState([]);
+  // Build meal
+  const [ingredients,  setIngredients]  = useState([]);
+  const [ingQuery,     setIngQuery]     = useState('');
+  const [ingDropdown,  setIngDropdown]  = useState([]);
+  // Added items notification
+  const [recentAdded,  setRecentAdded]  = useState([]);
+
+  const searchTimeout = useRef(null);
   const proteinLeft = Math.max(0, goals.protein - today.protein);
 
+  // Live search with debounce
   const doSearch = useCallback(async (text) => {
     if (text.length < 2) { setResults([]); return; }
     setSearching(true);
-    const foods = await searchFood(text, 15);
+    const foods = await searchFood(text, 20);
     setResults(foods);
     setSearching(false);
   }, []);
 
   function handleQueryChange(text) {
     setQuery(text);
-    if (text.length >= 2) doSearch(text);
-    else setResults([]);
+    clearTimeout(searchTimeout.current);
+    searchTimeout.current = setTimeout(() => doSearch(text), 400);
   }
 
-  async function addFood(f) {
-    await addMeal(f.name, f.cal, f.p, f.c, f.f, getSlot());
+  // Fix #5 — dropdown search for manual/build meal
+  function handleManualSearch(text) {
+    setManualSearch(text);
+    setManualFood(null);
+    if (text.length >= 1) {
+      setManualDropdown(searchLocalDB(text).slice(0, 8));
+    } else {
+      setManualDropdown([]);
+    }
+  }
+
+  function handleIngQuery(text) {
+    setIngQuery(text);
+    if (text.length >= 1) {
+      setIngDropdown(searchLocalDB(text).slice(0, 8));
+    } else {
+      setIngDropdown([]);
+    }
+  }
+
+  async function handleAddWithServing(food, grams) {
+    const factor = grams / 100;
+    const name = `${food.name} (${grams}g)`;
+    await addMeal(name, Math.round(food.cal*factor), Math.round(food.p*factor), Math.round(food.c*factor), Math.round(food.f*factor), getSlot());
+    // Fix #7 — show added item at top instead of popup
+    setRecentAdded(prev => [{ name, p: Math.round(food.p*factor), cal: Math.round(food.cal*factor) }, ...prev].slice(0, 3));
+    setSelectedFood(null);
+    setQuery('');
+    setResults([]);
+  }
+
+  // Manual tab: user picks food + grams → app calculates
+  async function addManualFood() {
+    if (!manualFood) { Alert.alert('Select a food', 'Type a food name and pick from the dropdown.'); return; }
+    const g = parseFloat(manualGrams) || 100;
+    const factor = g / 100;
+    const name = `${manualFood.name} (${g}g)`;
+    await addMeal(name, Math.round(manualFood.cal*factor), Math.round(manualFood.p*factor), Math.round(manualFood.c*factor), Math.round(manualFood.f*factor), getSlot());
+    setRecentAdded(prev => [{ name, p: Math.round(manualFood.p*factor), cal: Math.round(manualFood.cal*factor) }, ...prev].slice(0, 3));
+    setManualFood(null); setManualSearch(''); setManualGrams('100');
+  }
+
+  function selectManualFood(food) {
+    setManualFood(food);
+    setManualSearch(food.name);
+    setManualDropdown([]);
+  }
+
+  // Build meal tab
+  function selectIngredient(food) {
+    setIngredients(prev => [...prev, { ...food, grams: 100 }]);
+    setIngQuery('');
+    setIngDropdown([]);
+  }
+
+  function updateIngGrams(i, g) {
+    setIngredients(prev => prev.map((ing, idx) => idx===i ? {...ing, grams: parseFloat(g)||0} : ing));
+  }
+
+  function removeIng(i) { setIngredients(prev => prev.filter((_,idx) => idx!==i)); }
+
+  async function addAllIngredients() {
+    if (!ingredients.length) return;
+    let tCal=0, tP=0, tC=0, tF=0;
+    ingredients.forEach(ing => { const f=ing.grams/100; tCal+=ing.cal*f; tP+=ing.p*f; tC+=ing.c*f; tF+=ing.f*f; });
+    const name = ingredients.map(i=>i.name.split(' ')[0]).join('+');
+    await addMeal(name, tCal, tP, tC, tF, getSlot());
+    setRecentAdded(prev => [{ name, p: Math.round(tP), cal: Math.round(tCal) }, ...prev].slice(0, 3));
+    setIngredients([]);
     navigation.navigate('HomeTab');
   }
 
-  async function quickAddManual() {
-    const cal = parseInt(qaCal) || 0, p = parseInt(qaP) || 0;
-    if (!cal && !p) return;
-    await addMeal('Custom Meal', cal, p, parseInt(qaC)||0, parseInt(qaF)||0, getSlot());
-    setQaCal(''); setQaP(''); setQaC(''); setQaF('');
-    navigation.navigate('HomeTab');
-  }
+  // Computed ingredient totals
+  const ingTotals = ingredients.reduce((acc, ing) => {
+    const f = ing.grams/100;
+    return { cal: acc.cal+ing.cal*f, p: acc.p+ing.p*f, c: acc.c+ing.c*f, f: acc.f+ing.f*f };
+  }, { cal:0, p:0, c:0, f:0 });
+
+  // Manual food calculated macros
+  const manualG = parseFloat(manualGrams) || 0;
+  const manualCalc = manualFood && manualG > 0 ? {
+    cal: Math.round(manualFood.cal * manualG/100),
+    p:   Math.round(manualFood.p   * manualG/100),
+    c:   Math.round(manualFood.c   * manualG/100),
+    f:   Math.round(manualFood.f   * manualG/100),
+  } : null;
 
   return (
     <SafeAreaView style={s.safe}>
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <ScreenHeader title="Add Food" subtitle="2M+ foods from Open Food Facts" />
-        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.scroll} keyboardShouldPersistTaps="handled">
+      <KeyboardAvoidingView style={{flex:1}} behavior={Platform.OS==='ios'?'padding':undefined}>
+        <ScreenHeader title="Add Food" />
 
-          {/* Protein remaining */}
-          <View style={s.remainCard}>
-            <Text style={s.remainLabel}>Protein remaining today</Text>
-            <Text style={s.remainVal}>{proteinLeft}g</Text>
-          </View>
-
-          {/* Live search */}
-          <View style={s.searchRow}>
-            <TextInput
-              style={s.searchInput}
-              value={query}
-              onChangeText={handleQueryChange}
-              placeholder="Search 2M+ foods (e.g. chicken breast)…"
-              placeholderTextColor={colors.text3}
-              returnKeyType="search"
-              onSubmitEditing={() => doSearch(query)}
-            />
-            {searching && <ActivityIndicator color={colors.accent} style={{ marginRight: 12 }} />}
-          </View>
-
-          {/* Search results */}
-          {results.length > 0 && (
-            <View style={s.results}>
-              {results.map((f, i) => (
-                <TouchableOpacity key={i} style={s.foodRow} onPress={() => addFood(f)} activeOpacity={0.8}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={s.foodName} numberOfLines={1}>{f.name}</Text>
-                    <Text style={s.foodMacros}>{f.cal} kcal · {f.c}g carbs · {f.f}g fat · {f.per}</Text>
-                  </View>
-                  <View style={{ alignItems: 'flex-end' }}>
-                    <Text style={s.foodP}>{f.p}g</Text>
-                    <Text style={s.foodPLabel}>protein</Text>
-                  </View>
-                </TouchableOpacity>
-              ))}
+        {/* Today summary */}
+        <View style={[s.todaySummary, isLandscape && s.todaySummaryLandscape]}>
+          {[
+            { val:`${today.protein}g`, label:'Protein', color:colors.accent },
+            { val:`${today.calories}`, label:'Calories', color:colors.orange },
+            { val:`${proteinLeft}g`,   label:'Left',     color:colors.text2 },
+            { val:`${today.meals.length}`, label:'Meals', color:colors.accent3 },
+          ].map(item => (
+            <View key={item.label} style={s.summaryItem}>
+              <Text style={[s.summaryVal,{color:item.color}]}>{item.val}</Text>
+              <Text style={s.summaryLabel}>{item.label}</Text>
             </View>
-          )}
+          ))}
+        </View>
 
-          {query.length >= 2 && results.length === 0 && !searching && (
-            <Text style={s.noResults}>No results found. Try a different term.</Text>
-          )}
-
-          {/* Manual entry */}
-          <Text style={s.sectionTitle}>⚡ Quick Add</Text>
-          <View style={s.qaGrid}>
-            {[['Calories', qaCal, setQaCal], ['Protein (g)', qaP, setQaP],
-              ['Carbs (g)', qaC, setQaC],   ['Fat (g)',     qaF, setQaF]].map(([label, val, set]) => (
-              <View key={label} style={s.qaField}>
-                <Text style={s.qaLabel}>{label}</Text>
-                <TextInput style={s.qaInput} value={val} onChangeText={set} keyboardType="numeric" placeholder="0" placeholderTextColor={colors.text3} />
+        {/* Fix #7 — recently added items shown at top */}
+        {recentAdded.length > 0 && (
+          <View style={s.recentWrap}>
+            <Text style={s.recentTitle}>✓ Recently Added</Text>
+            {recentAdded.map((item, i) => (
+              <View key={i} style={s.recentItem}>
+                <Text style={s.recentName} numberOfLines={1}>{item.name}</Text>
+                <Text style={s.recentMacros}>{item.p}g protein · {item.cal} kcal</Text>
+                <TouchableOpacity onPress={() => navigation.navigate('HomeTab')} style={s.viewTodayBtn}>
+                  <Text style={s.viewTodayTxt}>View Today</Text>
+                </TouchableOpacity>
               </View>
             ))}
           </View>
-          <PrimaryButton title="Add Custom Meal" onPress={quickAddManual} />
+        )}
 
-          {/* AI Suggestions */}
-          <Text style={[s.sectionTitle, { marginTop: 20 }]}>🤖 Suggested High-Protein Meals</Text>
-          <Text style={s.sectionSub}>You need {proteinLeft}g more protein today</Text>
-          {MEAL_OPTIONS.map(opt => (
-            <TouchableOpacity key={opt.name} style={s.mealOpt} onPress={() => addFood(opt)} activeOpacity={0.8}>
-              <Text style={{ fontSize: 24, marginRight: 12 }}>{opt.emoji}</Text>
-              <View style={{ flex: 1 }}>
-                <Text style={s.mealOptName}>{opt.name}</Text>
-                <Text style={s.mealOptDesc}>{opt.desc} · {opt.cal} kcal</Text>
-              </View>
-              <Text style={s.mealOptP}>{opt.p}g</Text>
+        {/* Tabs */}
+        <View style={s.tabs}>
+          {[['search','🔍 Search'],['manual','⚡ Add Food'],['ingredients','🧪 Build Meal']].map(([key,label]) => (
+            <TouchableOpacity key={key} style={[s.tab, tab===key && s.tabOn]} onPress={() => setTab(key)}>
+              <Text style={[s.tabTxt, tab===key && {color:colors.accent}]}>{label}</Text>
             </TouchableOpacity>
           ))}
+        </View>
 
-          <View style={{ height: 30 }} />
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={[s.scroll, isLandscape && s.scrollLandscape]} keyboardShouldPersistTaps="handled">
+
+          {/* ── SEARCH TAB ── */}
+          {tab === 'search' && (
+            <>
+              <View style={s.searchRow}>
+                <TextInput style={s.searchInput} value={query} onChangeText={handleQueryChange}
+                  placeholder="Search foods (e.g. black tea, rice, chicken)…"
+                  placeholderTextColor={colors.text3} returnKeyType="search"
+                  onSubmitEditing={() => doSearch(query)} />
+                {searching && <ActivityIndicator color={colors.accent} style={{marginRight:10}} />}
+              </View>
+              {results.map((f,i) => (
+                <TouchableOpacity key={i} style={s.foodRow} onPress={() => setSelectedFood(f)} activeOpacity={0.8}>
+                  <View style={{flex:1}}>
+                    <Text style={s.foodName} numberOfLines={2}>{f.name}</Text>
+                    <Text style={s.foodMacros}>{f.p}g protein · {f.cal} kcal · per 100g</Text>
+                    {f.source === 'local' && <Text style={s.sourceTag}>📚 Built-in DB</Text>}
+                  </View>
+                  <View style={s.addPill}><Text style={s.addPillTxt}>Add +</Text></View>
+                </TouchableOpacity>
+              ))}
+              {query.length >= 2 && results.length === 0 && !searching && (
+                <View style={s.noResults}>
+                  <Text style={s.noResultsTxt}>No results for "{query}"</Text>
+                  <Text style={s.noResultsSub}>Try different keywords or use "Add Food" tab</Text>
+                </View>
+              )}
+              {results.length === 0 && query.length === 0 && (
+                <>
+                  <Text style={s.sectionTitle}>🤖 Suggested Meals</Text>
+                  <Text style={s.sectionSub}>You need {proteinLeft}g more protein today</Text>
+                  {MEAL_OPTIONS.map(opt => (
+                    <TouchableOpacity key={opt.name} style={s.mealOpt} onPress={() => setSelectedFood({...opt, per:'1 serving'})} activeOpacity={0.8}>
+                      <Text style={{fontSize:22,marginRight:10}}>{opt.emoji}</Text>
+                      <View style={{flex:1}}>
+                        <Text style={s.mealOptName}>{opt.name}</Text>
+                        <Text style={s.mealOptDesc}>{opt.desc}</Text>
+                      </View>
+                      <Text style={s.mealOptP}>{opt.p}g</Text>
+                    </TouchableOpacity>
+                  ))}
+                </>
+              )}
+            </>
+          )}
+
+          {/* ── MANUAL / ADD FOOD TAB ── Fix #4: user picks food + weight, app calculates */}
+          {tab === 'manual' && (
+            <>
+              <Text style={s.sectionTitle}>Add food by weight</Text>
+              <Text style={s.sectionSub}>Type a food name, pick from list, enter how many grams</Text>
+
+              {/* Food search with dropdown */}
+              <View>
+                <TextInput style={s.searchInput} value={manualSearch} onChangeText={handleManualSearch}
+                  placeholder="Type food name (e.g. chicken, rice, egg)…"
+                  placeholderTextColor={colors.text3} />
+                {manualDropdown.length > 0 && (
+                  <View style={s.dropdown}>
+                    {manualDropdown.map((f, i) => (
+                      <TouchableOpacity key={i} style={[s.dropdownItem, i===manualDropdown.length-1 && {borderBottomWidth:0}]} onPress={() => selectManualFood(f)}>
+                        <Text style={s.dropdownName}>{f.name}</Text>
+                        <Text style={s.dropdownMacros}>{f.p}g protein · {f.cal} kcal / 100g</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                )}
+              </View>
+
+              {manualFood && (
+                <>
+                  <View style={s.selectedFood}>
+                    <Text style={s.selectedFoodName}>✓ {manualFood.name}</Text>
+                    <Text style={s.selectedFoodSub}>{manualFood.p}g protein · {manualFood.cal} kcal per 100g</Text>
+                  </View>
+
+                  <Text style={[s.sectionTitle,{marginTop:12}]}>How many grams?</Text>
+                  <View style={s.gramsRow}>
+                    {['50','100','150','200','250','300'].map(p => (
+                      <TouchableOpacity key={p} style={[s.gramPreset, manualGrams===p && s.gramPresetOn]} onPress={() => setManualGrams(p)}>
+                        <Text style={[s.gramPresetTxt, manualGrams===p && {color:colors.accent}]}>{p}g</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                  <TextInput style={s.gramCustom} value={manualGrams} onChangeText={setManualGrams} keyboardType="numeric" placeholder="Custom grams" placeholderTextColor={colors.text3} selectTextOnFocus />
+
+                  {manualCalc && (
+                    <View style={s.calcPreview}>
+                      <Text style={s.calcPreviewTitle}>Nutritional values for {manualGrams}g:</Text>
+                      <View style={s.calcGrid}>
+                        {[
+                          {l:'Calories', v:`${manualCalc.cal} kcal`, c:colors.text},
+                          {l:'Protein',  v:`${manualCalc.p}g`,       c:colors.accent},
+                          {l:'Carbs',    v:`${manualCalc.c}g`,       c:colors.accent3},
+                          {l:'Fat',      v:`${manualCalc.f}g`,       c:colors.orange},
+                        ].map(m => (
+                          <View key={m.l} style={s.calcGridItem}>
+                            <Text style={[s.calcGridVal,{color:m.c}]}>{m.v}</Text>
+                            <Text style={s.calcGridLabel}>{m.l}</Text>
+                          </View>
+                        ))}
+                      </View>
+                    </View>
+                  )}
+                  <PrimaryButton title={`Add ${manualGrams}g of ${manualFood.name.split(' ')[0]}`} onPress={addManualFood} style={{marginTop:12}} />
+                </>
+              )}
+            </>
+          )}
+
+          {/* ── BUILD MEAL TAB ── Fix #5: dropdown ingredient search */}
+          {tab === 'ingredients' && (
+            <>
+              <Text style={s.sectionTitle}>Build a meal from ingredients</Text>
+              <Text style={s.sectionSub}>Add each ingredient — app calculates total macros</Text>
+
+              <View>
+                <View style={s.ingRow}>
+                  <TextInput style={[s.searchInput,{flex:1}]} value={ingQuery} onChangeText={handleIngQuery}
+                    placeholder="Type ingredient (e.g. rice, egg, milk)…"
+                    placeholderTextColor={colors.text3} returnKeyType="done" />
+                </View>
+                {ingDropdown.length > 0 && (
+                  <View style={s.dropdown}>
+                    {ingDropdown.map((f, i) => (
+                      <TouchableOpacity key={i} style={[s.dropdownItem, i===ingDropdown.length-1 && {borderBottomWidth:0}]} onPress={() => selectIngredient(f)}>
+                        <Text style={s.dropdownName}>{f.name}</Text>
+                        <Text style={s.dropdownMacros}>{f.p}g protein · {f.cal} kcal / 100g</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                )}
+              </View>
+
+              {ingredients.length === 0 && (
+                <Text style={s.hint}>Add ingredients one by one above</Text>
+              )}
+
+              {ingredients.map((ing, i) => (
+                <View key={i} style={s.ingItem}>
+                  <View style={{flex:1}}>
+                    <Text style={s.ingName} numberOfLines={1}>{ing.name}</Text>
+                    <Text style={s.ingMacros}>{Math.round(ing.p*ing.grams/100)}g prot · {Math.round(ing.cal*ing.grams/100)} kcal</Text>
+                  </View>
+                  <TextInput style={s.ingGrams} value={String(ing.grams)} onChangeText={g => updateIngGrams(i, g)} keyboardType="numeric" selectTextOnFocus />
+                  <Text style={s.ingUnit}>g</Text>
+                  <TouchableOpacity onPress={() => removeIng(i)} style={{paddingLeft:8}}>
+                    <Text style={{color:colors.text3,fontSize:18}}>×</Text>
+                  </TouchableOpacity>
+                </View>
+              ))}
+
+              {ingredients.length > 0 && (
+                <>
+                  <View style={s.ingTotal}>
+                    <Text style={s.ingTotalTitle}>Total meal nutrition</Text>
+                    <View style={s.calcGrid}>
+                      {[
+                        {l:'Calories', v:`${Math.round(ingTotals.cal)} kcal`, c:colors.text},
+                        {l:'Protein',  v:`${Math.round(ingTotals.p)}g`,       c:colors.accent},
+                        {l:'Carbs',    v:`${Math.round(ingTotals.c)}g`,       c:colors.accent3},
+                        {l:'Fat',      v:`${Math.round(ingTotals.f)}g`,       c:colors.orange},
+                      ].map(m => (
+                        <View key={m.l} style={s.calcGridItem}>
+                          <Text style={[s.calcGridVal,{color:m.c}]}>{m.v}</Text>
+                          <Text style={s.calcGridLabel}>{m.l}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  </View>
+                  <PrimaryButton title="Add Full Meal to Today" onPress={addAllIngredients} />
+                </>
+              )}
+            </>
+          )}
+
+          <View style={{height:40}} />
         </ScrollView>
       </KeyboardAvoidingView>
+
+      {selectedFood && (
+        <ServingModal food={selectedFood} onAdd={handleAddWithServing} onClose={() => setSelectedFood(null)} />
+      )}
     </SafeAreaView>
   );
 }
 
+const ms = StyleSheet.create({
+  overlay: { flex:1, backgroundColor:'rgba(0,0,0,0.7)', justifyContent:'flex-end' },
+  sheet: { backgroundColor:colors.bg2, borderTopLeftRadius:24, borderTopRightRadius:24, padding:20, paddingBottom:40 },
+  handle: { width:40, height:4, backgroundColor:colors.border, borderRadius:2, alignSelf:'center', marginBottom:16 },
+  title: { fontSize:17, fontWeight:'700', color:colors.text, marginBottom:4 },
+  sub: { fontSize:12, color:colors.text2, marginBottom:14 },
+  macroRow: { flexDirection:'row', gap:8, marginBottom:16 },
+  macroBox: { flex:1, backgroundColor:colors.card, borderRadius:10, padding:10, alignItems:'center' },
+  macroVal: { fontSize:15, fontWeight:'700' },
+  macroLabel: { fontSize:9, textTransform:'uppercase', color:colors.text2, marginTop:2 },
+  servingLabel: { fontSize:13, fontWeight:'700', color:colors.text, marginBottom:8 },
+  presetRow: { flexDirection:'row', flexWrap:'wrap', gap:8, marginBottom:10 },
+  preset: { backgroundColor:colors.card, borderRadius:8, paddingHorizontal:14, paddingVertical:8, borderWidth:1, borderColor:colors.border },
+  presetOn: { borderColor:colors.accent, backgroundColor:'rgba(126,255,160,0.1)' },
+  presetTxt: { fontSize:13, color:colors.text2, fontWeight:'600' },
+  gramInput: { backgroundColor:colors.card, borderWidth:1, borderColor:colors.border, borderRadius:radius.sm, padding:12, fontSize:16, color:colors.text, marginBottom:14, textAlign:'center' },
+  calcCard: { backgroundColor:'rgba(126,255,160,0.06)', borderRadius:radius.sm, padding:14, borderWidth:1, borderColor:'rgba(126,255,160,0.2)' },
+  calcTitle: { fontSize:12, color:colors.text2, marginBottom:10, fontWeight:'600' },
+  calcRow: { flexDirection:'row', justifyContent:'space-between' },
+  calcItem: { alignItems:'center' },
+  calcVal: { fontSize:18, fontWeight:'700' },
+  calcLabel: { fontSize:10, color:colors.text2, marginTop:2 },
+});
+
 const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.bg },
-  scroll: { padding: 18, paddingTop: 8 },
-  remainCard: { backgroundColor: 'rgba(126,255,160,0.08)', borderRadius: radius.sm, padding: 14, marginBottom: 14, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderWidth: 1, borderColor: 'rgba(126,255,160,0.2)' },
-  remainLabel: { fontSize: 13, color: colors.text2 },
-  remainVal: { fontSize: 24, fontWeight: '700', color: colors.accent },
-  searchRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.card, borderRadius: radius.sm, borderWidth: 1, borderColor: colors.border, marginBottom: 8 },
-  searchInput: { flex: 1, padding: 13, fontSize: 14, color: colors.text },
-  results: { marginBottom: 14 },
-  foodRow: { backgroundColor: colors.card, borderRadius: radius.sm, padding: 14, marginBottom: 7, flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: colors.border },
-  foodName: { fontSize: 13, fontWeight: '600', color: colors.text, marginBottom: 2 },
-  foodMacros: { fontSize: 11, color: colors.text2 },
-  foodP: { fontSize: 18, fontWeight: '700', color: colors.accent },
-  foodPLabel: { fontSize: 10, color: colors.text2 },
-  noResults: { color: colors.text2, fontSize: 13, textAlign: 'center', padding: 16 },
-  sectionTitle: { fontSize: 16, fontWeight: '700', color: colors.text, marginBottom: 4, marginTop: 10 },
-  sectionSub: { fontSize: 12, color: colors.text2, marginBottom: 10 },
-  qaGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 12 },
-  qaField: { width: '47%' },
-  qaLabel: { fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5, color: colors.text2, marginBottom: 5 },
-  qaInput: { backgroundColor: colors.bg3, borderWidth: 1, borderColor: colors.border, borderRadius: 8, padding: 11, fontSize: 15, color: colors.text },
-  mealOpt: { backgroundColor: colors.card, borderRadius: radius.sm, padding: 14, marginBottom: 8, flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: colors.border },
-  mealOptName: { fontSize: 14, fontWeight: '600', color: colors.text, marginBottom: 2 },
-  mealOptDesc: { fontSize: 11, color: colors.text2 },
-  mealOptP: { fontSize: 18, fontWeight: '700', color: colors.accent },
+  safe: { flex:1, backgroundColor:colors.bg },
+  scroll: { padding:18, paddingTop:8 },
+  scrollLandscape: { paddingHorizontal:32 },
+  todaySummary: { flexDirection:'row', backgroundColor:colors.card, marginHorizontal:18, marginBottom:6, borderRadius:radius.sm, padding:12, borderWidth:1, borderColor:colors.border },
+  todaySummaryLandscape: { marginHorizontal:32 },
+  summaryItem: { flex:1, alignItems:'center' },
+  summaryVal: { fontSize:18, fontWeight:'700' },
+  summaryLabel: { fontSize:10, color:colors.text2, marginTop:2 },
+  recentWrap: { backgroundColor:'rgba(126,255,160,0.07)', marginHorizontal:18, borderRadius:radius.sm, padding:12, marginBottom:6, borderWidth:1, borderColor:'rgba(126,255,160,0.2)' },
+  recentTitle: { fontSize:11, fontWeight:'700', color:colors.accent, textTransform:'uppercase', letterSpacing:0.5, marginBottom:8 },
+  recentItem: { flexDirection:'row', alignItems:'center', marginBottom:4 },
+  recentName: { flex:1, fontSize:12, color:colors.text, fontWeight:'600' },
+  recentMacros: { fontSize:11, color:colors.text2, marginRight:8 },
+  viewTodayBtn: { backgroundColor:'rgba(126,255,160,0.15)', borderRadius:10, paddingHorizontal:8, paddingVertical:3 },
+  viewTodayTxt: { color:colors.accent, fontSize:10, fontWeight:'700' },
+  tabs: { flexDirection:'row', marginHorizontal:18, marginBottom:10, backgroundColor:colors.card, borderRadius:radius.sm, padding:4, borderWidth:1, borderColor:colors.border },
+  tab: { flex:1, paddingVertical:8, alignItems:'center', borderRadius:8 },
+  tabOn: { backgroundColor:colors.bg3 },
+  tabTxt: { fontSize:11, fontWeight:'700', color:colors.text2 },
+  searchRow: { flexDirection:'row', alignItems:'center', backgroundColor:colors.card, borderRadius:radius.sm, borderWidth:1, borderColor:colors.border, marginBottom:10 },
+  searchInput: { flex:1, padding:12, fontSize:14, color:colors.text },
+  dropdown: { backgroundColor:colors.card2, borderRadius:radius.sm, borderWidth:1, borderColor:colors.border, marginBottom:10, overflow:'hidden' },
+  dropdownItem: { padding:12, borderBottomWidth:1, borderBottomColor:colors.border },
+  dropdownName: { fontSize:13, fontWeight:'600', color:colors.text },
+  dropdownMacros: { fontSize:11, color:colors.text2, marginTop:2 },
+  foodRow: { backgroundColor:colors.card, borderRadius:radius.sm, padding:14, marginBottom:7, flexDirection:'row', alignItems:'center', borderWidth:1, borderColor:colors.border },
+  foodName: { fontSize:13, fontWeight:'600', color:colors.text, marginBottom:2 },
+  foodMacros: { fontSize:11, color:colors.text2 },
+  sourceTag: { fontSize:10, color:colors.text3, marginTop:2 },
+  addPill: { backgroundColor:'rgba(126,255,160,0.15)', borderRadius:20, paddingHorizontal:10, paddingVertical:5, borderWidth:1, borderColor:'rgba(126,255,160,0.3)' },
+  addPillTxt: { color:colors.accent, fontWeight:'700', fontSize:12 },
+  noResults: { padding:20, alignItems:'center' },
+  noResultsTxt: { color:colors.text, fontSize:14, fontWeight:'600', marginBottom:6 },
+  noResultsSub: { color:colors.text2, fontSize:12, textAlign:'center' },
+  sectionTitle: { fontSize:15, fontWeight:'700', color:colors.text, marginBottom:4, marginTop:8 },
+  sectionSub: { fontSize:12, color:colors.text2, marginBottom:10 },
+  mealOpt: { backgroundColor:colors.card, borderRadius:radius.sm, padding:14, marginBottom:8, flexDirection:'row', alignItems:'center', borderWidth:1, borderColor:colors.border },
+  mealOptName: { fontSize:13, fontWeight:'600', color:colors.text, marginBottom:2 },
+  mealOptDesc: { fontSize:11, color:colors.text2 },
+  mealOptP: { fontSize:18, fontWeight:'700', color:colors.accent },
+  hint: { color:colors.text2, fontSize:12, textAlign:'center', padding:16 },
+  selectedFood: { backgroundColor:'rgba(126,255,160,0.08)', borderRadius:radius.sm, padding:12, marginTop:8, borderWidth:1, borderColor:'rgba(126,255,160,0.25)' },
+  selectedFoodName: { fontSize:14, fontWeight:'700', color:colors.accent },
+  selectedFoodSub: { fontSize:12, color:colors.text2, marginTop:2 },
+  gramsRow: { flexDirection:'row', flexWrap:'wrap', gap:8, marginBottom:10 },
+  gramPreset: { backgroundColor:colors.card, borderRadius:8, paddingHorizontal:14, paddingVertical:8, borderWidth:1, borderColor:colors.border },
+  gramPresetOn: { borderColor:colors.accent, backgroundColor:'rgba(126,255,160,0.1)' },
+  gramPresetTxt: { fontSize:13, color:colors.text2, fontWeight:'600' },
+  gramCustom: { backgroundColor:colors.card, borderWidth:1, borderColor:colors.border, borderRadius:radius.sm, padding:12, fontSize:15, color:colors.text, textAlign:'center', marginBottom:8 },
+  calcPreview: { backgroundColor:'rgba(0,212,255,0.06)', borderRadius:radius.sm, padding:14, borderWidth:1, borderColor:'rgba(0,212,255,0.2)', marginBottom:4 },
+  calcPreviewTitle: { fontSize:12, color:colors.text2, marginBottom:10, fontWeight:'600' },
+  calcGrid: { flexDirection:'row', justifyContent:'space-between' },
+  calcGridItem: { alignItems:'center', flex:1 },
+  calcGridVal: { fontSize:16, fontWeight:'700' },
+  calcGridLabel: { fontSize:10, color:colors.text2, marginTop:2 },
+  ingRow: { flexDirection:'row', gap:8, marginBottom:4 },
+  ingItem: { backgroundColor:colors.card, borderRadius:radius.sm, padding:12, marginBottom:8, flexDirection:'row', alignItems:'center', borderWidth:1, borderColor:colors.border },
+  ingName: { fontSize:13, fontWeight:'600', color:colors.text },
+  ingMacros: { fontSize:11, color:colors.text2 },
+  ingGrams: { backgroundColor:colors.bg3, borderRadius:6, padding:6, width:52, textAlign:'center', color:colors.text, fontSize:14, borderWidth:1, borderColor:colors.border },
+  ingUnit: { color:colors.text2, fontSize:12, marginLeft:3 },
+  ingTotal: { backgroundColor:'rgba(126,255,160,0.06)', borderRadius:radius.sm, padding:14, marginBottom:12, borderWidth:1, borderColor:'rgba(126,255,160,0.2)' },
+  ingTotalTitle: { fontSize:12, color:colors.text2, fontWeight:'700', marginBottom:10, textTransform:'uppercase', letterSpacing:0.5 },
 });

@@ -3,33 +3,28 @@
     "name": "ProteIN AI",
     "slug": "protein-ai-app",
     "version": "1.0.0",
-    "orientation": "portrait",
+    "orientation": "default",
     "userInterfaceStyle": "dark",
     "splash": { "backgroundColor": "#0a0a0f" },
     "plugins": [
-      [
-        "expo-camera",
-        { "cameraPermission": "Allow ProteIN AI to access your camera to scan meals." }
-      ],
-      [
-        "expo-notifications",
-        {
-          "icon": "./assets/notification-icon.png",
-          "color": "#7effa0"
-        }
-      ]
+      ["expo-camera", { "cameraPermission": "Allow ProteIN AI to access your camera to scan meals and take profile photos." }],
+      ["expo-image-picker", { "photosPermission": "Allow ProteIN AI to access your photos.", "cameraPermission": "Allow ProteIN AI to take photos." }],
+      ["expo-notifications", { "color": "#7effa0" }],
+      "expo-av"
     ],
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.protein.ai",
       "infoPlist": {
-        "NSCameraUsageDescription": "Used to scan and identify your meals.",
-        "NSPhotoLibraryUsageDescription": "Used to select meal photos."
+        "NSCameraUsageDescription": "Used to scan meals and take profile photos.",
+        "NSPhotoLibraryUsageDescription": "Used to select profile photos.",
+        "NSSpeechRecognitionUsageDescription": "Used to log food by voice.",
+        "NSMicrophoneUsageDescription": "Used for voice food logging."
       }
     },
     "android": {
       "package": "com.protein.ai",
-      "permissions": ["CAMERA", "RECORD_AUDIO", "RECEIVE_BOOT_COMPLETED", "VIBRATE"]
+      "permissions": ["CAMERA", "READ_EXTERNAL_STORAGE", "RECORD_AUDIO", "RECEIVE_BOOT_COMPLETED", "VIBRATE"]
     }
   }
 }
