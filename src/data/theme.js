@@ -6,6 +6,7 @@ export const C = {
   success:  '#86EFAC',
   secondary:'#38BDF8',
   warning:  '#FB923C',
+  danger:   '#F87171',
   gold:     '#FACC15',
   text:     '#FFFFFF',
   text2:    '#9AA4B2',

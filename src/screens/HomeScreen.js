@@ -34,6 +34,27 @@ function ProteinRing({ consumed, goal, size = 96, stroke = 11 }) {
   );
 }
 
+// ── Calorie bar: under the limit it stays quiet; near it turns orange, over it red ──
+function CalorieBar({ t, consumed, goal }) {
+  const eaten = Math.round(consumed);
+  const limit = Math.max(Math.round(goal), 1);
+  const over  = eaten > limit;
+  const near  = !over && eaten >= limit * 0.9;
+  const color = over ? C.danger : near ? C.warning : C.secondary;
+  const note  = over ? t('calOver', { n: eaten - limit }) : near ? t('calNear') : t('calLeft', { n: limit - eaten });
+  return (
+    <View style={s.calWrap} accessibilityLabel={`${t('calories')}: ${t('calOfGoal', { a: eaten, b: limit })}. ${note}`}>
+      <View style={s.calRow}>
+        <Text style={[s.calNum, over && { color:C.danger }]}>{t('calOfGoal', { a: eaten, b: limit })}</Text>
+        <Text style={[s.calNote, { color: over || near ? color : C.text3 }]} numberOfLines={1}>{over ? '⚠ ' : ''}{note}</Text>
+      </View>
+      <View style={s.calTrack}>
+        <View style={[s.calFill, { width:`${Math.min(eaten / limit, 1) * 100}%`, backgroundColor:color }]} />
+      </View>
+    </View>
+  );
+}
+
 function getGreeting(t) {
   const h = new Date().getHours();
   return h < 12 ? t('goodMorning') : h < 17 ? t('goodAfternoon') : t('goodEvening');
@@ -230,6 +251,7 @@ export default function HomeScreen({ navigation, route }) {
           <View style={{ flex:1 }}>
             <Text style={s.heroValue}>{remaining > 0 ? t('gramsToGo', { n: remaining }) : t('goalHitBig')}</Text>
             <Text style={s.heroSub}>{t('todaySoFar', { a: today.protein, b: goals.protein })}</Text>
+            <CalorieBar t={t} consumed={today.calories} goal={goals.calories} />
           </View>
         </View>
 
@@ -400,6 +422,12 @@ const s = StyleSheet.create({
   ringDone:  { fontSize:30, fontWeight:'900', color:C.primary },
   heroValue: { fontSize:30, fontWeight:'900', color:C.text, letterSpacing:-0.5 },
   heroSub:   { fontSize:14, color:C.text2, marginTop:4 },
+  calWrap:   { marginTop:12 },
+  calRow:    { flexDirection:'row', alignItems:'baseline', justifyContent:'space-between', gap:8, marginBottom:6 },
+  calNum:    { fontSize:13, fontWeight:'700', color:C.text2 },
+  calNote:   { fontSize:12, fontWeight:'600', flexShrink:1, textAlign:'right' },
+  calTrack:  { height:6, borderRadius:3, backgroundColor:C.border, overflow:'hidden' },
+  calFill:   { height:6, borderRadius:3 },
 
   // 2. Log buttons
   logRow:     { flexDirection:'row', gap:10 },
