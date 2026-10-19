@@ -1,31 +1,52 @@
-// ─── SERVER CONFIG ────────────────────────────────────────────────────────
-// During local development: 'http://YOUR_LOCAL_IP:3000'
-// Find your IP: Windows → ipconfig → IPv4 Address
-//               Mac     → System Preferences → Network
-// After deploying to Render: 'https://your-app.onrender.com'
-//
-// IMPORTANT: Use your computer's local IP, NOT localhost or 127.0.0.1
-// because the phone needs to reach your computer over WiFi.
-// Example: 'http://192.168.1.5:3000'
+import { supabase } from './supabase';
 
-export const SERVER_URL = 'http://192.168.86.155:3000'; // ← change this
+// ── SERVER CONFIG ──────────────────────────────────────────────────────────
+// Online server on Render. To test against the server on your own PC instead,
+// use your PC's local IP, e.g. 'http://192.168.86.155:3000'.
+export const SERVER_URL = 'https://proteinserver.onrender.com';
 
-// Request timeout in ms — prevents app from freezing if server is unreachable
-export const REQUEST_TIMEOUT = 8000;
+// Render's free plan sleeps after 15 min idle and needs up to ~50s to wake,
+// so allow a generous timeout and wake the server as soon as the app opens.
+const TIMEOUT_MS = 30000;
 
-// Helper: fetch with timeout so app never freezes waiting for server
-export async function fetchWithTimeout(url, options = {}) {
+// ── Feature switches ──
+// payments:false = free version. Every feature is unlocked and no premium /
+// trial screens are shown (stores reject buy buttons that don't work).
+// Turn on once real in-app purchases are set up.
+export const FEATURES = {
+  payments: false,
+};
+
+// Server error → translation key for a friendly message (null = generic).
+export function errorKey(status, data) {
+  if (data?.code === 'daily_limit') return 'dailyLimit';
+  if (data?.code === 'busy') return 'serverBusy';
+  if (status === 401) return 'sessionExpired';
+  return null;
+}
+
+export function wakeServer() {
+  fetch(SERVER_URL).catch(() => {});
+}
+
+// The server only answers signed-in users — send the Supabase session token.
+export async function authHeaders() {
+  const { data } = await supabase.auth.getSession();
+  const token = data?.session?.access_token;
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+export async function fetchWithTimeout(url, options = {}, timeoutMs = TIMEOUT_MS) {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const res = await fetch(url, { ...options, signal: controller.signal });
+    const headers = { ...(options.headers || {}), ...(await authHeaders()) };
+    const res = await fetch(url, { ...options, headers, signal: controller.signal });
     clearTimeout(timer);
     return res;
-  } catch (err) {
+  } catch (e) {
     clearTimeout(timer);
-    if (err.name === 'AbortError') {
-      throw new Error('Server not responding. Check your SERVER_URL in src/lib/config.js and make sure the server is running.');
-    }
-    throw err;
+    if (e.name === 'AbortError') throw new Error('Server not responding. Check SERVER_URL in config.js.');
+    throw e;
   }
 }

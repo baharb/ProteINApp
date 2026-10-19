@@ -1,10 +1,13 @@
+import { C } from './theme';
+
+// Legacy palette names — mapped onto the shared theme so every screen matches.
 export const colors = {
-  bg: '#0a0a0f', bg2: '#111118', bg3: '#1a1a24',
-  card: '#16161f', card2: '#1e1e2a',
-  border: 'rgba(255,255,255,0.07)',
-  accent: '#7effa0', accent3: '#00d4ff',
-  orange: '#ff8c42', pink: '#ff6b9d',
-  text: '#f0f0f8', text2: '#8888a8', text3: '#555570',
+  bg: C.bg, bg2: C.card, bg3: C.card2,
+  card: C.card, card2: C.card2,
+  border: C.border,
+  accent: C.primary, accent3: C.secondary,
+  orange: C.warning, pink: '#F472B6',
+  text: C.text, text2: C.text2, text3: C.text3,
 };
 export const radius = { sm: 12, md: 16, lg: 20 };
 

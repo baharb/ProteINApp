@@ -1,103 +1,228 @@
-import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
-import { colors, radius } from '../data/constants';
+import React, { useRef, useEffect } from 'react';
+import { View, TouchableOpacity, StyleSheet, Animated, Image } from 'react-native';
+import { Text } from './AppText';
+import Svg, { Circle } from 'react-native-svg';
+import { useNavigation } from '@react-navigation/native';
+import { C, R } from '../data/theme';
+import { FOOD_IMAGES, guessFoodImage } from '../data/foodImages';
+import { useLang } from '../hooks/useLang';
 
-export function Card({ children, style }) {
-  return <View style={[s.card, style]}>{children}</View>;
+// ── Food photo (falls back to the emoji while loading / offline) ─────────
+export function FoodImage({ image, emoji, name, size=56, round=false, style }) {
+  const src = FOOD_IMAGES[image] || FOOD_IMAGES[guessFoodImage(name)];
+  const shape = { width:size, height:size, borderRadius: round ? size/2 : Math.round(size*0.22) };
+  // Cut-out food on a plain dark tile; emoji for foods without a picture.
+  return (
+    <View style={[shape, { backgroundColor:C.card2, alignItems:'center', justifyContent:'center', overflow:'hidden' }, style]}>
+      {src
+        ? <Image source={src.source} style={{ width:size*0.84, height:size*0.84 }} resizeMode="contain" />
+        : <Text style={{ fontSize:size*0.45 }}>{emoji || '🍽️'}</Text>}
+    </View>
+  );
 }
 
-export function ScreenHeader({ title, subtitle, navigation, backLabel = 'Back' }) {
+// ── Protein Ring ─────────────────────────────────────────────────────────
+export function ProteinRing({ consumed, goal, size=140, stroke=10 }) {
+  const radius   = (size - stroke) / 2;
+  const circum   = 2 * Math.PI * radius;
+  const progress = Math.min(consumed / Math.max(goal, 1), 1);
+  const dash     = circum * progress;
+  const animVal  = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.timing(animVal, { toValue: progress, duration:800, useNativeDriver:false }).start();
+  }, [progress]);
+
+  const remaining = Math.max(0, goal - consumed);
+  const pct = Math.round(progress * 100);
+
   return (
-    <View style={s.header}>
-      {navigation && (
-        <TouchableOpacity onPress={() => navigation.goBack()} style={s.backBtn} activeOpacity={0.7}>
-          <Text style={s.backText}>‹ {backLabel}</Text>
+    <View style={{ alignItems:'center', justifyContent:'center', width:size, height:size }}>
+      <Svg width={size} height={size} style={{ position:'absolute' }}>
+        {/* Background track */}
+        <Circle cx={size/2} cy={size/2} r={radius}
+          stroke={C.border} strokeWidth={stroke} fill="none" />
+        {/* Progress arc */}
+        <Circle cx={size/2} cy={size/2} r={radius}
+          stroke={progress >= 1 ? C.success : C.primary}
+          strokeWidth={stroke} fill="none"
+          strokeDasharray={`${dash} ${circum - dash}`}
+          strokeDashoffset={circum / 4}
+          strokeLinecap="round"
+        />
+      </Svg>
+      <View style={{ alignItems:'center' }}>
+        <Text style={{ fontSize:28, fontWeight:'800', color:C.text }}>{consumed}g</Text>
+        <Text style={{ fontSize:11, color:C.text2 }}>of {goal}g</Text>
+        <Text style={{ fontSize:11, color:progress>=1?C.success:C.primary, fontWeight:'700' }}>{pct}%</Text>
+      </View>
+    </View>
+  );
+}
+
+// ── Suggestion Card ───────────────────────────────────────────────────────
+export function SuggestionCard({ food, onAdd, isPrimary=false, t }) {
+  return (
+    <TouchableOpacity style={[sc.card, isPrimary && sc.primaryCard]} onPress={onAdd} activeOpacity={0.85}>
+      <View style={sc.left}>
+        {food.tag && <View style={sc.tag}><Text style={sc.tagTxt}>{food.tag}</Text></View>}
+        <Text style={[sc.emoji]}>{food.emoji}</Text>
+        <View style={sc.info}>
+          <Text style={sc.name} numberOfLines={1}>{food.name}</Text>
+          <Text style={sc.protein}>+{food.protein}g protein</Text>
+        </View>
+      </View>
+      <TouchableOpacity style={[sc.addBtn, isPrimary && sc.addBtnPrimary]} onPress={onAdd} activeOpacity={0.8}>
+        <Text style={[sc.addTxt, isPrimary && { color:'#07111F' }]}>{t ? t('add') : 'ADD'}</Text>
+      </TouchableOpacity>
+    </TouchableOpacity>
+  );
+}
+
+const sc = StyleSheet.create({
+  card: { backgroundColor:C.card, borderRadius:R.md, padding:14, flexDirection:'row', alignItems:'center', justifyContent:'space-between', borderWidth:1, borderColor:C.border, marginBottom:8 },
+  primaryCard: { borderColor:C.primary+'40', backgroundColor:C.card2 },
+  left: { flexDirection:'row', alignItems:'center', flex:1, gap:10 },
+  tag: { position:'absolute', top:-18, left:0, backgroundColor:C.primary+'20', borderRadius:R.sm, paddingHorizontal:8, paddingVertical:2 },
+  tagTxt: { fontSize:10, color:C.primary, fontWeight:'700' },
+  emoji: { fontSize:24 },
+  info: { flex:1 },
+  name: { fontSize:15, fontWeight:'600', color:C.text, marginBottom:2 },
+  protein: { fontSize:12, color:C.primary, fontWeight:'600' },
+  addBtn: { backgroundColor:C.border, borderRadius:R.sm, paddingHorizontal:14, paddingVertical:8 },
+  addBtnPrimary: { backgroundColor:C.primary },
+  addTxt: { fontSize:12, fontWeight:'800', color:C.text },
+});
+
+// ── Quick Add Pill ────────────────────────────────────────────────────────
+export function QuickAddPill({ item, onAdd }) {
+  return (
+    <TouchableOpacity style={qa.pill} onPress={onAdd} activeOpacity={0.8}>
+      <Text style={qa.emoji}>{item.emoji}</Text>
+      <Text style={qa.name}>{item.name}</Text>
+      <Text style={qa.protein}>+{item.protein}g</Text>
+    </TouchableOpacity>
+  );
+}
+
+const qa = StyleSheet.create({
+  pill: { backgroundColor:C.card, borderRadius:R.md, paddingVertical:12, paddingHorizontal:14, alignItems:'center', minWidth:80, borderWidth:1, borderColor:C.border },
+  emoji: { fontSize:20, marginBottom:4 },
+  name: { fontSize:12, fontWeight:'600', color:C.text, marginBottom:2 },
+  protein: { fontSize:11, color:C.primary, fontWeight:'700' },
+});
+
+// ── Macro Pill ────────────────────────────────────────────────────────────
+export function MacroPill({ label, value, color }) {
+  return (
+    <View style={mp.wrap}>
+      <Text style={[mp.val, { color }]}>{value}</Text>
+      <Text style={mp.label}>{label}</Text>
+    </View>
+  );
+}
+
+const mp = StyleSheet.create({
+  wrap: { alignItems:'center', flex:1 },
+  val: { fontSize:18, fontWeight:'700' },
+  label: { fontSize:11, color:C.text2, marginTop:2 },
+});
+
+// ── Section Header ────────────────────────────────────────────────────────
+export function SectionHeader({ title, action, onAction }) {
+  return (
+    <View style={{ flexDirection:'row', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
+      <Text style={{ fontSize:17, fontWeight:'700', color:C.text }}>{title}</Text>
+      {action && <TouchableOpacity onPress={onAction}><Text style={{ fontSize:13, color:C.primary, fontWeight:'600' }}>{action}</Text></TouchableOpacity>}
+    </View>
+  );
+}
+
+// ── Primary Button ────────────────────────────────────────────────────────
+export function PrimaryBtn({ title, onPress, style, disabled, variant='green' }) {
+  const bg = variant==='blue' ? C.secondary : variant==='outline' ? 'transparent' : C.primary;
+  const textColor = variant==='outline' ? C.text : '#07111F';
+  return (
+    <TouchableOpacity style={[pb.btn, { backgroundColor:bg, borderWidth:variant==='outline'?1:0, borderColor:C.border }, disabled&&{opacity:0.5}, style]}
+      onPress={onPress} disabled={disabled} activeOpacity={0.85}>
+      <Text style={[pb.txt, { color:textColor }]}>{title}</Text>
+    </TouchableOpacity>
+  );
+}
+
+const pb = StyleSheet.create({
+  btn: { height:52, borderRadius:R.md, alignItems:'center', justifyContent:'center', paddingHorizontal:20 },
+  txt: { fontSize:15, fontWeight:'800', letterSpacing:0.3 },
+});
+
+// Names used by the older screens (AddFood, Program, Dashboard).
+export const PrimaryButton = PrimaryBtn;
+export function SecondaryButton(props) { return <PrimaryBtn variant="outline" {...props} />; }
+
+// ── Screen Header (with back button when there is somewhere to go back to) ──
+export function ScreenHeader({ title, subtitle }) {
+  const navigation = useNavigation();
+  const { back } = useLang();
+  const canGoBack  = navigation.canGoBack();
+  return (
+    <View style={hd.wrap}>
+      {canGoBack && (
+        <TouchableOpacity onPress={() => navigation.goBack()} style={hd.back} hitSlop={{ top:10, bottom:10, left:10, right:10 }}>
+          <Text style={hd.backTxt}>{back}</Text>
         </TouchableOpacity>
       )}
-      <Text style={s.title}>{title}</Text>
-      {subtitle ? <Text style={s.subtitle}>{subtitle}</Text> : null}
+      <View style={{ flex:1 }}>
+        <Text style={hd.title}>{title}</Text>
+        {subtitle && <Text style={hd.sub}>{subtitle}</Text>}
+      </View>
+      {canGoBack && <View style={{ width:32 }} />}
     </View>
   );
 }
 
-export function MacroBar({ label, icon, value, target, unit = 'g', color }) {
-  const pct = target > 0 ? Math.min(100, Math.round((value / target) * 100)) : 0;
+const hd = StyleSheet.create({
+  wrap:    { flexDirection:'row', alignItems:'center', paddingHorizontal:16, paddingVertical:12 },
+  back:    { width:32 },
+  backTxt: { fontSize:30, color:C.text, lineHeight:32 },
+  title:   { fontSize:18, fontWeight:'800', color:C.text, textAlign:'center' },
+  sub:     { fontSize:12, color:C.text2, textAlign:'center', marginTop:2 },
+});
+
+// ── Stat Card ─────────────────────────────────────────────────────────────
+export function StatCard({ label, value, sub, color }) {
   return (
-    <View style={[s.macroCard, { borderColor: color + '44' }]}>
-      <View style={s.macroHead}>
-        <Text style={s.macroLabel}>{label}</Text>
-        <Text style={{ fontSize: 16 }}>{icon}</Text>
-      </View>
-      <Text style={[s.macroValue, { color }]}>{value}{unit !== '' ? unit : ''}</Text>
-      <Text style={s.macroTarget}>/ {target}{unit !== '' ? unit : ' kcal'}</Text>
-      <View style={s.barBg}>
-        <View style={[s.barFill, { width: `${pct}%`, backgroundColor: color }]} />
-      </View>
+    <View style={st.card}>
+      <Text style={[st.value, { color: color||C.primary }]}>{value}</Text>
+      {sub && <Text style={st.sub}>{sub}</Text>}
+      <Text style={st.label}>{label}</Text>
     </View>
   );
 }
 
-export function PrimaryButton({ title, onPress, style, loading = false, disabled = false }) {
+const st = StyleSheet.create({
+  card: { backgroundColor:C.card, borderRadius:R.md, padding:14, alignItems:'center', flex:1, borderWidth:1, borderColor:C.border },
+  value: { fontSize:20, fontWeight:'800' },
+  sub: { fontSize:10, color:C.text3, marginTop:1 },
+  label: { fontSize:11, color:C.text2, marginTop:4, textAlign:'center' },
+});
+
+// ── Settings Row ──────────────────────────────────────────────────────────
+export function SettingsRow({ icon, label, value, onPress, showArrow=true }) {
+  const { fwd } = useLang();
   return (
-    <TouchableOpacity style={[s.primaryBtn, (loading || disabled) && { opacity: 0.6 }, style]} onPress={onPress} activeOpacity={0.85} disabled={loading || disabled}>
-      {loading ? <ActivityIndicator color="#0a0a0f" /> : <Text style={s.primaryBtnText}>{title}</Text>}
+    <TouchableOpacity style={sr.row} onPress={onPress} activeOpacity={onPress?0.7:1}>
+      {icon && <Text style={{ fontSize:18, marginRight:12 }}>{icon}</Text>}
+      <Text style={sr.label}>{label}</Text>
+      <View style={{ marginLeft:'auto', flexDirection:'row', alignItems:'center', gap:6 }}>
+        {value && <Text style={sr.value}>{value}</Text>}
+        {showArrow && onPress && <Text style={{ color:C.text3, fontSize:16 }}>{fwd}</Text>}
+      </View>
     </TouchableOpacity>
   );
 }
 
-export function SecondaryButton({ title, onPress, style }) {
-  return (
-    <TouchableOpacity style={[s.secondaryBtn, style]} onPress={onPress} activeOpacity={0.85}>
-      <Text style={s.secondaryBtnText}>{title}</Text>
-    </TouchableOpacity>
-  );
-}
-
-export function TipCard({ tip }) {
-  return (
-    <View style={s.tipCard}>
-      <Text style={s.tipLabel}>💡 Tip</Text>
-      <Text style={s.tipText}>{tip}</Text>
-    </View>
-  );
-}
-
-export function ProteinStatusBadge({ today, goals }) {
-  const pct = goals.protein > 0 ? Math.min(100, (today.protein / goals.protein) * 100) : 0;
-  const remaining = Math.max(0, goals.protein - today.protein);
-  const isMet = pct >= 100, isClose = pct >= 70;
-  const color = isMet ? colors.accent : isClose ? colors.accent3 : colors.orange;
-  const label = isMet ? '✓ Goal Met!' : isClose ? 'Almost There' : 'Low Protein';
-  return (
-    <View style={[s.badge, { borderColor: color + '55', backgroundColor: color + '18' }]}>
-      <Text style={[s.badgeLabel, { color }]}>{label}</Text>
-      {!isMet && <Text style={s.badgeRemaining}>{remaining}g to go</Text>}
-    </View>
-  );
-}
-
-const s = StyleSheet.create({
-  card: { backgroundColor: colors.card, borderRadius: radius.lg, padding: 16, borderWidth: 1, borderColor: colors.border, marginBottom: 12 },
-  header: { paddingHorizontal: 18, paddingTop: 14, paddingBottom: 8 },
-  backBtn: { alignSelf: 'flex-start', marginBottom: 6 },
-  backText: { fontSize: 17, color: colors.accent, fontWeight: '600' },
-  title: { fontSize: 26, fontWeight: '700', color: colors.text, letterSpacing: -0.5 },
-  subtitle: { fontSize: 13, color: colors.text2, marginTop: 2 },
-  macroCard: { backgroundColor: colors.card, borderRadius: radius.lg, padding: 12, flex: 1, borderWidth: 1 },
-  macroHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
-  macroLabel: { fontSize: 10, textTransform: 'uppercase', letterSpacing: 1, color: colors.text2, fontWeight: '700' },
-  macroValue: { fontSize: 22, fontWeight: '700' },
-  macroTarget: { fontSize: 11, color: colors.text2, marginBottom: 6 },
-  barBg: { height: 4, backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: 10, overflow: 'hidden' },
-  barFill: { height: '100%', borderRadius: 10 },
-  primaryBtn: { backgroundColor: colors.accent, borderRadius: radius.sm, paddingVertical: 14, alignItems: 'center' },
-  primaryBtnText: { color: '#0a0a0f', fontWeight: '700', fontSize: 15 },
-  secondaryBtn: { backgroundColor: colors.card, borderRadius: radius.sm, paddingVertical: 14, alignItems: 'center', borderWidth: 1, borderColor: colors.border },
-  secondaryBtnText: { color: colors.text, fontWeight: '500', fontSize: 14 },
-  tipCard: { backgroundColor: 'rgba(255,107,157,0.08)', borderRadius: radius.lg, padding: 14, borderWidth: 1, borderColor: 'rgba(255,107,157,0.2)', marginBottom: 12 },
-  tipLabel: { fontSize: 10, textTransform: 'uppercase', letterSpacing: 1, color: colors.pink, fontWeight: '700', marginBottom: 4 },
-  tipText: { fontSize: 13, color: colors.text, lineHeight: 20 },
-  badge: { borderRadius: 20, paddingHorizontal: 14, paddingVertical: 6, borderWidth: 1, alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 8 },
-  badgeLabel: { fontSize: 13, fontWeight: '700' },
-  badgeRemaining: { fontSize: 12, color: colors.text2 },
+const sr = StyleSheet.create({
+  row: { flexDirection:'row', alignItems:'center', paddingVertical:15, borderBottomWidth:1, borderBottomColor:C.border },
+  label: { fontSize:15, color:C.text },
+  value: { fontSize:14, color:C.text2 },
 });

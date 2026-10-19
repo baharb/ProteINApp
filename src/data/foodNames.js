@@ -1,0 +1,22 @@
+// Names of the app's built-in foods in each language (keyed by the English name).
+export const FOOD_NAMES = {
+  'Grilled Chicken Bowl':  { fa:'کاسه مرغ گریل و برنج', ar:'طبق دجاج مشوي', es:'Bol de pollo a la parrilla', ja:'グリルチキンボウル', zh:'烤鸡饭碗' },
+  'Greek Yogurt + 2 Eggs': { fa:'ماست یونانی + ۲ تخم‌مرغ', ar:'زبادي يوناني + بيضتان', es:'Yogur griego + 2 huevos', ja:'ギリシャヨーグルト＋卵2個', zh:'希腊酸奶+2个鸡蛋' },
+  'Protein Shake':         { fa:'شیک پروتئین', ar:'مشروب بروتين', es:'Batido de proteína', ja:'プロテインシェイク', zh:'蛋白奶昔' },
+  'Tuna Sandwich':         { fa:'ساندویچ تن ماهی', ar:'ساندويتش تونة', es:'Sándwich de atún', ja:'ツナサンド', zh:'金枪鱼三明治' },
+  'Chicken Breast (120g)': { fa:'سینه مرغ (۱۲۰ گرم)', ar:'صدر دجاج (120 غ)', es:'Pechuga de pollo (120 g)', ja:'鶏むね肉 (120g)', zh:'鸡胸肉 (120克)' },
+  'Cottage Cheese':        { fa:'پنیر کاتیج', ar:'جبن قريش', es:'Requesón', ja:'カッテージチーズ', zh:'茅屋奶酪' },
+  '2 Boiled Eggs':         { fa:'۲ تخم‌مرغ آب‌پز', ar:'بيضتان مسلوقتان', es:'2 huevos cocidos', ja:'ゆで卵2個', zh:'2个水煮蛋' },
+  'Tuna Can':              { fa:'یک قوطی تن ماهی', ar:'علبة تونة', es:'Lata de atún', ja:'ツナ缶', zh:'一罐金枪鱼' },
+  'Greek Yogurt (200g)':   { fa:'ماست یونانی (۲۰۰ گرم)', ar:'زبادي يوناني (200 غ)', es:'Yogur griego (200 g)', ja:'ギリシャヨーグルト (200g)', zh:'希腊酸奶 (200克)' },
+  'Whey Protein':          { fa:'پروتئین وی', ar:'بروتين مصل اللبن', es:'Proteína whey', ja:'ホエイプロテイン', zh:'乳清蛋白' },
+  'Turkey Breast':         { fa:'سینه بوقلمون', ar:'صدر ديك رومي', es:'Pechuga de pavo', ja:'七面鳥の胸肉', zh:'火鸡胸肉' },
+  'Shake':                 { fa:'شیک', ar:'مشروب بروتين', es:'Batido', ja:'シェイク', zh:'奶昔' },
+  'Yogurt':                { fa:'ماست', ar:'زبادي', es:'Yogur', ja:'ヨーグルト', zh:'酸奶' },
+  '2 Eggs':                { fa:'۲ تخم‌مرغ', ar:'بيضتان', es:'2 huevos', ja:'卵2個', zh:'2个鸡蛋' },
+  'Eggs':                  { fa:'تخم‌مرغ', ar:'بيض', es:'Huevos', ja:'卵', zh:'鸡蛋' },
+  'Chicken':               { fa:'مرغ', ar:'دجاج', es:'Pollo', ja:'鶏肉', zh:'鸡肉' },
+  'Tuna':                  { fa:'تن ماهی', ar:'تونة', es:'Atún', ja:'ツナ', zh:'金枪鱼' },
+  'Tuna (100g)':           { fa:'تن ماهی (۱۰۰ گرم)', ar:'تونة (100 غ)', es:'Atún (100 g)', ja:'ツナ (100g)', zh:'金枪鱼 (100克)' },
+  'Cottage Cheese (150g)': { fa:'پنیر کاتیج (۱۵۰ گرم)', ar:'جبن قريش (150 غ)', es:'Requesón (150 g)', ja:'カッテージチーズ (150g)', zh:'茅屋奶酪 (150克)' },
+};

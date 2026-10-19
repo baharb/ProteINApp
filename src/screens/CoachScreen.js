@@ -1,22 +1,13 @@
 import React, { useState, useRef, useEffect } from 'react';
-import {
-  View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet,
-  KeyboardAvoidingView, Platform, ActivityIndicator, useWindowDimensions, Animated,
-} from 'react-native';
+import { View, TouchableOpacity, ScrollView, StyleSheet, KeyboardAvoidingView, Platform, ActivityIndicator, useWindowDimensions, Animated } from 'react-native';
+import { Text, TextInput } from '../components/AppText';
+import { DEMO, DEMO_COACH } from '../lib/demo';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, radius } from '../data/constants';
 import { useApp } from '../hooks/useApp';
-import { SERVER_URL, fetchWithTimeout } from '../lib/config';
+import { SERVER_URL, fetchWithTimeout, errorKey } from '../lib/config';
 import { useVoice } from '../hooks/useVoice';
-
-const QUICK_QS = [
-  'How do I hit my protein goal today?',
-  'Give me a high-protein meal idea',
-  'How do I lose fat without losing muscle?',
-  'What should I eat after a workout?',
-];
-
-const DISCLAIMER = '⚕️ AI Coach provides general wellness information only. Always consult a doctor or registered dietitian before making significant changes to your diet or exercise routine, especially if you have a medical condition.';
+import { useLang } from '../hooks/useLang';
 
 function MicButton({ isListening, isProcessing, onPress }) {
   const pulse = useRef(new Animated.Value(1)).current;
@@ -41,17 +32,26 @@ const mb = StyleSheet.create({
   btnActive:{backgroundColor:'rgba(126,255,160,0.2)',borderColor:colors.accent},
 });
 
+// "**Now:**" from the AI → bold "Now:" (the model sometimes uses markdown).
+function renderBold(text) {
+  return String(text).split(/\*\*(.+?)\*\*/g).map((part, i) =>
+    i % 2 ? <Text key={i} style={{ fontWeight:'800' }}>{part}</Text> : part.replace(/^#+\s*/gm, ''));
+}
+
 export default function CoachScreen({ navigation }) {
   const { today, goals, goals2, profile } = useApp();
+  const { t, lang, back } = useLang();
+  const QUICK_QS = [t('q1'), t('q2'), t('q3'), t('q4')];
   const { width, height } = useWindowDimensions();
   const isLandscape = width > height;
-  const [messages, setMessages] = useState([]);
+  const [messages, setMessages] = useState(DEMO ? DEMO_COACH : []);
   const [input,    setInput]    = useState('');
   const [thinking, setThinking] = useState(false);
   const [error,    setError]    = useState(null);
   const scrollRef = useRef(null);
 
   const voice = useVoice({
+    lang,
     onResult: (text) => {
       setInput('');
       sendMessage(text);
@@ -78,15 +78,15 @@ export default function CoachScreen({ navigation }) {
     try {
       const res = await fetchWithTimeout(`${SERVER_URL}/chat`,{
         method:'POST', headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({messages:updated, profile:buildProfile()}),
+        body:JSON.stringify({messages:updated, profile:buildProfile(), lang}),
       });
-      if (!res.ok) { const err=await res.json(); throw new Error(err.error||`Error ${res.status}`); }
+      if (!res.ok) { const err=await res.json().catch(()=>({})); throw new Error(errorKey(res.status, err) || 'estimateFailed'); }
       const data = await res.json();
       setMessages(prev => [...prev, {role:'assistant',content:data.reply}]);
     } catch (err) {
-      setError(err.message.includes('fetch')||err.message.includes('Server')
-        ? 'Cannot reach server. Check SERVER_URL in config.js.'
-        : err.message);
+      setError(err.message.includes('fetch')||err.message.includes('Server')||err.name==='AbortError'
+        ? t('serverDown')
+        : t(err.message));
     } finally {
       setThinking(false);
       setTimeout(() => scrollRef.current?.scrollToEnd({animated:true}), 100);
@@ -94,27 +94,27 @@ export default function CoachScreen({ navigation }) {
   }
 
   const displayMessages = [
-    { role:'assistant', content:"Hey! I'm your AI nutrition coach 💪\n\nAsk me anything about diet, nutrition, and fitness — or tap 🎤 to speak!" },
+    { role:'assistant', content:t('coachHello') },
     ...messages,
   ];
 
   return (
-    <SafeAreaView style={s.safe} edges={['top']}>
+    <SafeAreaView style={s.safe} edges={['top', 'bottom']}>
       <View style={[s.header, isLandscape&&s.headerL]}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={s.backBtn} hitSlop={{top:10,bottom:10,left:10,right:10}}>
-          <Text style={s.backText}>‹ Back</Text>
+          <Text style={s.backText}>{back} {t('back')}</Text>
         </TouchableOpacity>
         <View style={s.headerCenter}>
-          <Text style={s.title} numberOfLines={1}>🤖 AI Coach</Text>
-          {voice.isListening && <Text style={s.listeningSub}>🎤 Listening… tap mic to send</Text>}
-          {voice.isProcessing && <Text style={s.listeningSub}>⏳ Processing…</Text>}
+          <Text style={s.title} numberOfLines={1}>{t('coachTitle')}</Text>
+          {voice.isListening && <Text style={s.listeningSub}>{t('recording')}</Text>}
+          {voice.isProcessing && <Text style={s.listeningSub}>{t('processing')}</Text>}
         </View>
         <View style={{width:70}} />
       </View>
 
       {/* Disclaimer banner */}
       <View style={s.disclaimer}>
-        <Text style={s.disclaimerTxt}>{DISCLAIMER}</Text>
+        <Text style={s.disclaimerTxt}>{t('coachDisclaimer')}</Text>
       </View>
 
       <KeyboardAvoidingView style={{flex:1}} behavior={Platform.OS==='ios'?'padding':undefined}>
@@ -125,7 +125,7 @@ export default function CoachScreen({ navigation }) {
           {displayMessages.map((m, i) => (
             <View key={i} style={[s.msgWrap, m.role==='user'?s.userWrap:s.aiWrap]}>
               <View style={[s.bubble, m.role==='user'?s.userBubble:s.aiBubble]}>
-                <Text style={[s.bubbleText, m.role==='user'&&{color:'#0a0a0f',fontWeight:'500'}]}>{m.content}</Text>
+                <Text style={[s.bubbleText, m.role==='user'&&{color:'#0a0a0f',fontWeight:'500'}]}>{renderBold(m.content)}</Text>
               </View>
             </View>
           ))}
@@ -133,15 +133,15 @@ export default function CoachScreen({ navigation }) {
             <View style={s.aiWrap}>
               <View style={[s.aiBubble,{flexDirection:'row',alignItems:'center',gap:8}]}>
                 <ActivityIndicator size="small" color={colors.text2} />
-                <Text style={{color:colors.text2,fontSize:13}}>Thinking…</Text>
+                <Text style={{color:colors.text2,fontSize:13}}>{t('thinking')}</Text>
               </View>
             </View>
           )}
           {error && <View style={s.errorBox}><Text style={s.errorTxt}>⚠️ {error}</Text></View>}
-          {voice.error && <View style={s.errorBox}><Text style={s.errorTxt}>🎤 {voice.error}</Text></View>}
+          {voice.error && <View style={s.errorBox}><Text style={s.errorTxt}>🎤 {t(voice.error)}</Text></View>}
           {messages.length===0&&!thinking&&(
             <View style={{gap:8,marginTop:4}}>
-              <Text style={{fontSize:12,color:colors.text2,marginBottom:2}}>Try asking:</Text>
+              <Text style={{fontSize:12,color:colors.text2,marginBottom:2}}>{t('tryAsking')}</Text>
               {QUICK_QS.map(q=>(
                 <TouchableOpacity key={q} style={s.quickQ} onPress={() => sendMessage(q)}>
                   <Text style={s.quickQText}>{q}</Text>
@@ -153,7 +153,7 @@ export default function CoachScreen({ navigation }) {
         <View style={[s.inputRow, isLandscape&&{paddingHorizontal:60}]}>
           <TextInput style={[s.input, voice.isListening&&s.inputListening]}
             value={input} onChangeText={setInput}
-            placeholder={voice.isListening?'🎤 Recording… tap mic to send':'Ask me anything…'}
+            placeholder={voice.isListening?t('recording'):t('askAnything')}
             placeholderTextColor={voice.isListening?colors.accent:colors.text3}
             multiline returnKeyType="send" onSubmitEditing={()=>sendMessage()} />
           <MicButton isListening={voice.isListening} isProcessing={voice.isProcessing}
