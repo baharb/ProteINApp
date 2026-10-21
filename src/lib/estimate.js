@@ -1,13 +1,14 @@
 import { SERVER_URL, fetchWithTimeout, errorKey } from './config';
 
 // "کوبیده با برنج" → [{ name, emoji, unit, qty, qty_given, protein_per_unit, calories_per_unit }]
-export async function estimateMeal(text, lang = 'en') {
+// format 'grams' → [{ name, amount_g, per_100g:{calories,protein,carbs,fat} }] (same as a scan's ingredients)
+export async function estimateMeal(text, lang = 'en', format) {
   let res;
   try {
     res = await fetchWithTimeout(`${SERVER_URL}/estimate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text, lang }),
+      body: JSON.stringify({ text, lang, ...(format && { format }) }),
     }, 45000);
   } catch {
     throw new Error('cantReach');

@@ -129,6 +129,10 @@ function MealAnalysis({ scanResult, photoUri, remainingProtein, onFixMeal, onAdd
   }
 
   function updateAmount(i, val) {
+    if (i >= ingredients.length) {   // something the user added
+      const j = i - ingredients.length;
+      return setAdded(prev => prev.map((ing, idx) => idx === j ? { ...ing, amount_g: val } : ing));
+    }
     setPortion(null);
     setIngredients(prev => prev.map((ing,idx) => idx===i ? {...ing, amount_g:val} : ing));
   }
@@ -149,7 +153,8 @@ function MealAnalysis({ scanResult, photoUri, remainingProtein, onFixMeal, onAdd
     if (!q || addBusy) return;
     setAddBusy(true); setAddError('');
     try {
-      const items = await estimateMeal(q, lang);
+      // grams + per 100 g, so added foods show, edit and add up like scanned ones
+      const items = await estimateMeal(q, lang, 'grams');
       if (!items.length) throw new Error('estimateFailed');
       setAdded(prev => [...prev, ...items.map(it => ({ ...it, added: true }))]);
       setAddText(''); setAdding(false);

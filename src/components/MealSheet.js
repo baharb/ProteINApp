@@ -7,7 +7,7 @@ import { useLang } from '../hooks/useLang';
 
 // Bottom sheet: "Got it — how much?" → pick portions → Log it.
 // Only protein-rich foods (10g+ per portion) with no amount given get portion buttons.
-export default function MealSheet({ visible, text, title, loading, error, items: initial, remaining, onLog, onClose, onRetry }) {
+export default function MealSheet({ visible, text, textLabel, title, loading, error, items: initial, remaining, onLog, onClose, onRetry }) {
   const { t, qtyLabel } = useLang();
   const [items, setItems] = useState([]);
   useEffect(() => { setItems(initial || []); }, [initial]);
@@ -27,7 +27,10 @@ export default function MealSheet({ visible, text, title, loading, error, items:
 
           {/* What the user said */}
           {!!text && (
-            <View style={s.bubble}><Text style={s.bubbleTxt}>{text}</Text></View>
+            <View style={s.bubble}>
+              {!!textLabel && <Text style={s.bubbleLabel}>🎤 {textLabel}</Text>}
+              <Text style={s.bubbleTxt}>{text}</Text>
+            </View>
           )}
 
           {loading && (
@@ -109,6 +112,7 @@ const s = StyleSheet.create({
 
   bubble:    { alignSelf:'flex-end', backgroundColor:C.card2, borderRadius:16, borderBottomRightRadius:4, paddingHorizontal:14, paddingVertical:9, marginBottom:16, maxWidth:'85%' },
   bubbleTxt: { fontSize:15, color:C.text },
+  bubbleLabel: { fontSize:12, fontWeight:'700', color:C.primary, marginBottom:4 },
 
   center:     { alignItems:'center', paddingVertical:28, gap:14 },
   loadingTxt: { fontSize:15, color:C.text2, fontWeight:'600' },

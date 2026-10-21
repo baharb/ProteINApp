@@ -83,22 +83,25 @@ export function AppProvider({ children }) {
   async function loadUserData(userId, { silent = false } = {}) {
     if (!silent) setLoading(true);
     try {
-      const { data: prof } = await supabase.from('profiles').select('*').eq('id', userId).single();
+      // Profile, today's meals and weights load in parallel (they used to load one by one).
+      const todayStr = localDateKey();
+      const [{ data: prof }, { data: meals }, { data: wts }] = await Promise.all([
+        supabase.from('profiles').select('*').eq('id', userId).single(),
+        supabase.from('meals').select('*').eq('user_id', userId).eq('date', todayStr).order('created_at', { ascending:true }),
+        supabase.from('weight_log').select('*').eq('user_id', userId).order('logged_at',{ascending:true}).limit(30),
+      ]);
       if (prof) {
-        const avatarUrl = prof.avatar_path ? await getSignedAvatarUrl(prof.avatar_path) : null;
-        setProfile({ ...prof, avatar_url: avatarUrl });
+        setProfile({ ...prof, avatar_url: null });
         setGoals({ calories:prof.goal_calories||2000, protein:prof.goal_protein||120, carbs:prof.goal_carbs||200, fat:prof.goal_fat||60 });
         setGoals2(prof.goals||['muscle']);
         setUnits({ weight:prof.weight_unit||'kg', height:prof.height_unit||'cm' });
+        // The profile photo link isn't needed to show Home — fetch it afterwards.
+        if (prof.avatar_path) getSignedAvatarUrl(prof.avatar_path).then(url => url && setProfile(p => p && ({ ...p, avatar_url: url })));
       }
-      const todayStr = localDateKey();
-      const { data: meals } = await supabase.from('meals').select('*')
-        .eq('user_id', userId).eq('date', todayStr).order('created_at', { ascending:true });
       if (meals?.length) {
         const tot = meals.reduce((a,m)=>({ calories:a.calories+m.calories, protein:a.protein+m.protein, carbs:a.carbs+m.carbs, fat:a.fat+m.fat }),{calories:0,protein:0,carbs:0,fat:0});
         setToday({ ...tot, meals:meals.map(m=>({ id:m.id, name:m.name, cal:m.calories, p:m.protein, c:m.carbs, f:m.fat, slot:m.slot })) });
       }
-      const { data: wts } = await supabase.from('weight_log').select('*').eq('user_id', userId).order('logged_at',{ascending:true}).limit(30);
       if (wts) setWeightLog(wts.map(w=>({ weight:w.weight_kg, date:new Date(w.logged_at).toLocaleDateString('en-US',{month:'short',day:'numeric'}) })));
     } catch(e) { console.error('loadUserData:', e); }
     finally { setLoading(false); }

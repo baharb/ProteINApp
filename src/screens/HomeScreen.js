@@ -11,6 +11,7 @@ import { useVoice } from '../hooks/useVoice';
 import { useRequireAccount } from '../hooks/useRequireAccount';
 import { FoodImage } from '../components/UI';
 import MealSheet from '../components/MealSheet';
+import VoiceOverlay from '../components/VoiceOverlay';
 import { planNextMeals, nextMealMoment } from '../lib/planner';
 import { estimateMeal } from '../lib/estimate';
 
@@ -117,11 +118,11 @@ export default function HomeScreen({ navigation, route }) {
   const scrollRef = useRef(null);
   const logY      = useRef(0);   // where the Log buttons sit, to scroll the text box above the keyboard
 
-  async function describe(raw) {
+  async function describe(raw, fromVoice = false) {
     const q = (raw ?? text).trim();
     if (!q) return;
     Keyboard.dismiss();
-    setSheet({ visible:true, text:q, title:null, loading:true, error:'', items:null });
+    setSheet({ visible:true, text:q, fromVoice, title:null, loading:true, error:'', items:null });
     try {
       const items = await estimateMeal(q, lang);
       setSheet(prev => ({ ...prev, loading:false, items }));
@@ -153,7 +154,7 @@ export default function HomeScreen({ navigation, route }) {
     showToast({ name: mealName, protein });
   }
 
-  const voice = useVoice({ lang, onResult: (said) => { setText(said); describe(said); } });
+  const voice = useVoice({ lang, onResult: (said) => { setText(said); describe(said, true); } });
 
   function onMic() {
     if (!requireAccount('log')) return;
@@ -373,9 +374,12 @@ export default function HomeScreen({ navigation, route }) {
         <View style={{ height: typing ? 420 : 40 }} />
       </ScrollView>
 
+      <VoiceOverlay voice={voice} />
+
       <MealSheet
         visible={sheet.visible}
         text={sheet.text}
+        textLabel={sheet.fromVoice ? t('youSaid') : null}
         title={sheet.title}
         loading={sheet.loading}
         error={sheet.error}

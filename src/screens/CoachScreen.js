@@ -7,6 +7,7 @@ import { colors, radius } from '../data/constants';
 import { useApp } from '../hooks/useApp';
 import { SERVER_URL, fetchWithTimeout, errorKey } from '../lib/config';
 import { useVoice } from '../hooks/useVoice';
+import VoiceOverlay from '../components/VoiceOverlay';
 import { useLang } from '../hooks/useLang';
 
 function MicButton({ isListening, isProcessing, onPress }) {
@@ -164,6 +165,7 @@ export default function CoachScreen({ navigation }) {
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
+      <VoiceOverlay voice={voice} />
     </SafeAreaView>
   );
 }
