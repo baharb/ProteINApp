@@ -306,32 +306,25 @@ export default function HomeScreen({ navigation, route }) {
           {voice.isListening ? t('tapToStop') : voice.error ? t(voice.error) : t('inputHint')}
         </Text>
 
-        {/* ── 3. Today's meal idea: its own gray card, so it reads as a suggestion, not one of your foods ── */}
-        {next && (
-          <View style={s.ideaCard}>
-            <FoodImage image={next.image} emoji={next.emoji} name={next.name} size={64} />
-            <View style={{ flex:1 }}>
-              <Text style={s.ideaKicker}>💡 {ideaLabel}</Text>
-              <Text style={s.ideaTitle} numberOfLines={1}>{foodName(next.name)}</Text>
-              <Text style={s.ideaSub}>{t('approxProtein', { n: next.protein })}</Text>
-            </View>
-            <View style={{ gap:8, alignItems:'flex-end' }}>
-              <TouchableOpacity style={s.ideaLogBtn} onPress={() => logFood(next)} activeOpacity={0.85}>
-                <Text style={s.ideaLogTxt}>{t('logIt')}</Text>
-              </TouchableOpacity>
+        {/* ── 3. One tap: today's idea (gray square, first) and your usual foods ── */}
+        <Text style={s.sectionTitle}>{t('quickLog')}</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap:12, paddingRight:4, alignItems:'flex-start' }}>
+          {next && (
+            <TouchableOpacity style={s.ideaTile} onPress={() => logFood(next)} activeOpacity={0.85}
+              accessibilityLabel={`${ideaLabel}: ${foodName(next.name)}`}>
+              <Text style={s.ideaTileTag}>💡 {t('ideaTag')}</Text>
+              <FoodImage image={next.image} emoji={next.emoji} name={next.name} size={54} round style={{ backgroundColor:C.bg }} />
+              <Text style={s.foodName} numberOfLines={2}>{shortName(foodName(next.name))}</Text>
+              <Text style={s.foodProtein}>+{next.protein}g</Text>
+              <Text style={s.ideaTileMeal} numberOfLines={1}>{t(moment.label)}</Text>
               {plan.length > 1 && (
-                <TouchableOpacity onPress={() => setSwapIdx(i => i + 1)} hitSlop={8}>
-                  <Text style={s.ideaOther}>↻ {t('swap')}</Text>
+                <TouchableOpacity style={s.ideaTileSwap} onPress={() => setSwapIdx(i => i + 1)} hitSlop={6} accessibilityLabel={t('swap')}>
+                  <Text style={s.ideaTileSwapTxt}>↻ {t('swap')}</Text>
                 </TouchableOpacity>
               )}
-            </View>
-          </View>
-        )}
-
-        {/* ── 4. One tap: your usual foods ── */}
-        <Text style={s.sectionTitle}>{t('quickLog')}</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap:12, paddingRight:4, paddingTop:4 }}>
-          {yourFoods.map(item => (
+            </TouchableOpacity>
+          )}
+          {yourFoods.filter(item => !next || item.name !== next.name).map(item => (
             <TouchableOpacity key={item.name} style={s.foodPill} onPress={() => onFoodTap(item)} activeOpacity={0.85}>
               <FoodImage image={item.image} emoji={item.emoji} name={item.name} size={58} round />
               <Text style={s.foodName} numberOfLines={2}>{shortName(foodName(item.name))}</Text>
@@ -468,14 +461,12 @@ const s = StyleSheet.create({
   foodProtein:  { fontSize:13, color:C.primary, fontWeight:'800' },
 
   // Today's meal idea (gray surface so it reads as a suggestion, not one of your foods)
-  ideaCard:      { flexDirection:'row', alignItems:'center', gap:14, backgroundColor:C.card2, borderRadius:R.xl, padding:14, marginBottom:22, borderWidth:1, borderColor:C.border },
-  ideaKicker:    { fontSize:12, fontWeight:'800', color:C.primary, marginBottom:3 },
-  ideaTitle:     { fontSize:15, fontWeight:'800', color:C.text },
-  ideaSub:       { fontSize:13, color:C.text2, marginTop:2 },
-  ideaLogBtn:    { paddingHorizontal:16, height:36, borderRadius:R.full, alignItems:'center', justifyContent:'center', backgroundColor:C.primary },
-  ideaLogTxt:    { fontSize:13, fontWeight:'900', color:'#0B0F14' },
-  ideaOther:     { fontSize:12, fontWeight:'700', color:C.text2 },
 
+  ideaTile:        { width:112, alignItems:'center', backgroundColor:C.card2, borderRadius:R.lg, paddingTop:8, paddingBottom:8, paddingHorizontal:8, borderWidth:1, borderColor:C.border },
+  ideaTileTag:     { fontSize:11, fontWeight:'800', color:C.primary, marginBottom:6 },
+  ideaTileMeal:    { fontSize:11, color:C.text3, marginTop:2 },
+  ideaTileSwap:    { marginTop:6, paddingHorizontal:10, paddingVertical:3, borderRadius:R.full, backgroundColor:C.card, borderWidth:1, borderColor:C.border },
+  ideaTileSwapTxt: { fontSize:11, fontWeight:'700', color:C.text2 },
   doneCard:  { backgroundColor:C.primary+'10', borderRadius:R.xl, padding:22, alignItems:'center', marginTop:22, borderWidth:1, borderColor:C.primary+'35' },
   doneEmoji: { fontSize:40, marginBottom:8 },
   doneTitle: { fontSize:18, fontWeight:'900', color:C.primary, marginBottom:4 },
