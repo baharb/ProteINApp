@@ -45,12 +45,14 @@ function CalorieBar({ t, consumed, goal }) {
   return (
     <View style={s.calWrap} accessibilityLabel={`${t('calories')}: ${t('calOfGoal', { a: eaten, b: limit })}. ${note}`}>
       <View style={s.calRow}>
-        <Text style={[s.calNum, over && { color:C.danger }]}>{t('calOfGoal', { a: eaten, b: limit })}</Text>
-        <Text style={[s.calNote, { color: over || near ? color : C.text3 }]} numberOfLines={1}>{over ? '⚠ ' : ''}{note}</Text>
+        <Text style={[s.calNum, over && { color:C.danger }]} numberOfLines={1}>{t('calOfGoal', { a: eaten, b: limit })}</Text>
+        {!over && !near && <Text style={[s.calNote, { color:C.text3 }]} numberOfLines={1}>{note}</Text>}
       </View>
       <View style={s.calTrack}>
         <View style={[s.calFill, { width:`${Math.min(eaten / limit, 1) * 100}%`, backgroundColor:color }]} />
       </View>
+      {/* A warning gets its own full-width line so it's never cut off. */}
+      {(over || near) && <Text style={[s.calWarn, { color }]}>{over ? '⚠ ' : ''}{note}</Text>}
     </View>
   );
 }
@@ -424,10 +426,11 @@ const s = StyleSheet.create({
   heroSub:   { fontSize:14, color:C.text2, marginTop:4 },
   calWrap:   { marginTop:12 },
   calRow:    { flexDirection:'row', alignItems:'baseline', justifyContent:'space-between', gap:8, marginBottom:6 },
-  calNum:    { fontSize:13, fontWeight:'700', color:C.text2 },
+  calNum:    { fontSize:13, fontWeight:'700', color:C.text2, flexShrink:0 },
   calNote:   { fontSize:12, fontWeight:'600', flexShrink:1, textAlign:'right' },
   calTrack:  { height:6, borderRadius:3, backgroundColor:C.border, overflow:'hidden' },
   calFill:   { height:6, borderRadius:3 },
+  calWarn:   { fontSize:13, fontWeight:'700', marginTop:7 },
 
   // 2. Log buttons
   logRow:     { flexDirection:'row', gap:10 },

@@ -17,10 +17,13 @@ export const DEMO_MEALS = [
   { id: 'd2', name: '2 eggs and toast',       cal: 300, p: 15, c: 20, f: 14, slot: 0, emoji: '🍳' },
   { id: 'd3', name: 'Grilled chicken bowl',   cal: 520, p: 41, c: 48, f: 14, slot: 1, emoji: '🍗' },
 ];
-export const DEMO_TODAY = DEMO_MEALS.reduce(
+const DEMO_BASE = DEMO_MEALS.reduce(
   (a, m) => ({ ...a, calories: a.calories + m.cal, protein: a.protein + m.p, carbs: a.carbs + m.c, fat: a.fat + m.f }),
   { calories: 0, protein: 0, carbs: 0, fat: 0, meals: DEMO_MEALS },
 );
+// ?cal=near / ?cal=over shows the calorie bar's warning states.
+const CAL = (search.match(/[?&]cal=(\w+)/) || [])[1];
+export const DEMO_TODAY = { ...DEMO_BASE, calories: CAL === 'over' ? 2140 : CAL === 'near' ? 1760 : DEMO_BASE.calories };
 
 const now = Date.now();
 export const DEMO_MY_FOODS = {
