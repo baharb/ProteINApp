@@ -12,6 +12,7 @@ import { useRequireAccount } from '../hooks/useRequireAccount';
 import { FoodImage } from '../components/UI';
 import MealSheet from '../components/MealSheet';
 import VoiceOverlay from '../components/VoiceOverlay';
+
 import { planNextMeals, nextMealMoment } from '../lib/planner';
 import { estimateMeal } from '../lib/estimate';
 
@@ -98,6 +99,7 @@ export default function HomeScreen({ navigation, route }) {
   useEffect(() => { setSwapIdx(0); }, [plan.length, remaining]);
   const next = plan.length ? plan[swapIdx % plan.length] : null;
 
+  const ideaLabel = next ? t('mealIdea', { meal: t(moment.label) }) : '';
   // ── Your foods: most-eaten first, topped up with defaults for new users ──
   const yourFoods = useMemo(() => {
     const mine  = Object.values(myFoods).sort((a, b) => (b.count - a.count) || (b.last - a.last)).slice(0, 8)
@@ -257,7 +259,6 @@ export default function HomeScreen({ navigation, route }) {
             <CalorieBar t={t} consumed={today.calories} goal={goals.calories} />
           </View>
         </View>
-
         {/* ── 2. Log it: three equal ways ── */}
         <Text style={s.sectionTitle} onLayout={e => { logY.current = e.nativeEvent.layout.y; }}>{t('logWhatYouAte')}</Text>
         <View style={s.logRow}>
@@ -305,26 +306,32 @@ export default function HomeScreen({ navigation, route }) {
           {voice.isListening ? t('tapToStop') : voice.error ? t(voice.error) : t('inputHint')}
         </Text>
 
-        {/* ── 3. One tap: today's idea first, then your usual foods ── */}
+        {/* ── 3. Today's meal idea: its own gray card, so it reads as a suggestion, not one of your foods ── */}
+        {next && (
+          <View style={s.ideaCard}>
+            <FoodImage image={next.image} emoji={next.emoji} name={next.name} size={64} />
+            <View style={{ flex:1 }}>
+              <Text style={s.ideaKicker}>💡 {ideaLabel}</Text>
+              <Text style={s.ideaTitle} numberOfLines={1}>{foodName(next.name)}</Text>
+              <Text style={s.ideaSub}>{t('approxProtein', { n: next.protein })}</Text>
+            </View>
+            <View style={{ gap:8, alignItems:'flex-end' }}>
+              <TouchableOpacity style={s.ideaLogBtn} onPress={() => logFood(next)} activeOpacity={0.85}>
+                <Text style={s.ideaLogTxt}>{t('logIt')}</Text>
+              </TouchableOpacity>
+              {plan.length > 1 && (
+                <TouchableOpacity onPress={() => setSwapIdx(i => i + 1)} hitSlop={8}>
+                  <Text style={s.ideaOther}>↻ {t('swap')}</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
+        )}
+
+        {/* ── 4. One tap: your usual foods ── */}
         <Text style={s.sectionTitle}>{t('quickLog')}</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap:12, paddingRight:4, paddingTop:4 }}>
-          {next && (
-            <TouchableOpacity key="__idea" style={[s.foodPill, s.ideaPill]} onPress={() => logFood(next)} activeOpacity={0.85}
-              accessibilityLabel={`${t('mealIdea', { meal: t(moment.label) })}: ${foodName(next.name)}`}>
-              <View>
-                <FoodImage image={next.image} emoji={next.emoji} name={next.name} size={58} round style={s.ideaImg} />
-                {plan.length > 1 && (
-                  <TouchableOpacity style={s.ideaSwap} onPress={() => setSwapIdx(i => i + 1)} accessibilityLabel={t('swap')} hitSlop={8}>
-                    <Text style={s.ideaSwapTxt}>↻</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
-              <View style={s.ideaTag}><Text style={s.ideaTagTxt}>💡 {t('ideaTag')}</Text></View>
-              <Text style={s.foodName} numberOfLines={2}>{shortName(foodName(next.name))}</Text>
-              <Text style={s.foodProtein}>+{next.protein}g</Text>
-            </TouchableOpacity>
-          )}
-          {yourFoods.filter(item => !next || item.name !== next.name).map(item => (
+          {yourFoods.map(item => (
             <TouchableOpacity key={item.name} style={s.foodPill} onPress={() => onFoodTap(item)} activeOpacity={0.85}>
               <FoodImage image={item.image} emoji={item.emoji} name={item.name} size={58} round />
               <Text style={s.foodName} numberOfLines={2}>{shortName(foodName(item.name))}</Text>
@@ -460,13 +467,14 @@ const s = StyleSheet.create({
   foodName:     { fontSize:13, fontWeight:'600', color:C.text, marginTop:8, marginBottom:2, textAlign:'center' },
   foodProtein:  { fontSize:13, color:C.primary, fontWeight:'800' },
 
-  // Today's idea, first chip in the row
-  ideaPill:    { width:96 },
-  ideaImg:     { borderWidth:2, borderColor:C.primary },
-  ideaTag:     { marginTop:6, backgroundColor:C.primary+'22', borderRadius:R.full, paddingHorizontal:8, paddingVertical:2 },
-  ideaTagTxt:  { fontSize:11, fontWeight:'800', color:C.primary },
-  ideaSwap:    { position:'absolute', top:-4, right:-8, width:26, height:26, borderRadius:13, alignItems:'center', justifyContent:'center', backgroundColor:C.card2, borderWidth:1, borderColor:C.border },
-  ideaSwapTxt: { fontSize:13, color:C.text, fontWeight:'800' },
+  // Today's meal idea (gray surface so it reads as a suggestion, not one of your foods)
+  ideaCard:      { flexDirection:'row', alignItems:'center', gap:14, backgroundColor:C.card2, borderRadius:R.xl, padding:14, marginBottom:22, borderWidth:1, borderColor:C.border },
+  ideaKicker:    { fontSize:12, fontWeight:'800', color:C.primary, marginBottom:3 },
+  ideaTitle:     { fontSize:15, fontWeight:'800', color:C.text },
+  ideaSub:       { fontSize:13, color:C.text2, marginTop:2 },
+  ideaLogBtn:    { paddingHorizontal:16, height:36, borderRadius:R.full, alignItems:'center', justifyContent:'center', backgroundColor:C.primary },
+  ideaLogTxt:    { fontSize:13, fontWeight:'900', color:'#0B0F14' },
+  ideaOther:     { fontSize:12, fontWeight:'700', color:C.text2 },
 
   doneCard:  { backgroundColor:C.primary+'10', borderRadius:R.xl, padding:22, alignItems:'center', marginTop:22, borderWidth:1, borderColor:C.primary+'35' },
   doneEmoji: { fontSize:40, marginBottom:8 },
