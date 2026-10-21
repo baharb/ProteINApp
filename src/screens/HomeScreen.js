@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { View, ScrollView, TouchableOpacity, StyleSheet, StatusBar, Image, Alert, Animated, Keyboard, ActivityIndicator } from 'react-native';
+import { View, ScrollView, TouchableOpacity, Pressable, StyleSheet, StatusBar, Image, Alert, Animated, Keyboard, ActivityIndicator } from 'react-native';
 import { Text, TextInput } from '../components/AppText';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Circle } from 'react-native-svg';
@@ -261,18 +261,21 @@ export default function HomeScreen({ navigation, route }) {
         {/* ── 2. Log it: three equal ways ── */}
         <Text style={s.sectionTitle} onLayout={e => { logY.current = e.nativeEvent.layout.y; }}>{t('logWhatYouAte')}</Text>
         <View style={s.logRow}>
-          <TouchableOpacity style={[s.logBtn, s.logBtnMain]} onPress={onSnap} activeOpacity={0.9} accessibilityRole="button" accessibilityLabel={t('scanMeal')}>
-            <Text style={s.logIcon}>📷</Text>
-            <Text style={[s.logTxt, s.logTxtMain]}>{t('snap')}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={[s.logBtn, voice.isListening && s.logBtnOn]} onPress={onMic} activeOpacity={0.9} accessibilityRole="button" accessibilityLabel={t('sayIt')}>
-            {voice.isProcessing ? <ActivityIndicator color={C.primary} style={{ height:34 }} /> : <Text style={s.logIcon}>🎤</Text>}
-            <Text style={[s.logTxt, voice.isListening && { color:C.primary }]}>{t('say')}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={[s.logBtn, (typing || !!text) && s.logBtnOn]} onPress={onType} activeOpacity={0.9} accessibilityRole="button" accessibilityLabel={t('inputPlaceholder')}>
-            <Text style={s.logIcon}>⌨️</Text>
-            <Text style={s.logTxt}>{t('typeIt')}</Text>
-          </TouchableOpacity>
+          {[
+            { key:'snap', icon:'📷', label:t('snap'),   a11y:t('scanMeal'),         on:false,                                     onPress:onSnap },
+            { key:'say',  icon:'🎤', label:t('say'),    a11y:t('sayIt'),            on:voice.isListening || voice.isProcessing,  onPress:onMic },
+            { key:'type', icon:'⌨️', label:t('typeIt'), a11y:t('inputPlaceholder'), on:typing || !!text,                         onPress:onType },
+          ].map(b => (
+            <Pressable key={b.key} onPress={b.onPress} accessibilityRole="button" accessibilityLabel={b.a11y} accessibilityState={{ selected:b.on }}
+              style={({ pressed }) => [s.logBtn, (b.on || pressed) && s.logBtnOn]}>
+              {({ pressed }) => (<>
+                {b.key === 'say' && voice.isProcessing
+                  ? <ActivityIndicator color="#0B0F14" style={{ height:34 }} />
+                  : <Text style={s.logIcon}>{b.icon}</Text>}
+                <Text style={[s.logTxt, (b.on || pressed) && s.logTxtOn]}>{b.label}</Text>
+              </>)}
+            </Pressable>
+          ))}
         </View>
 
         {(typing || !!text) && (
@@ -302,10 +305,26 @@ export default function HomeScreen({ navigation, route }) {
           {voice.isListening ? t('tapToStop') : voice.error ? t(voice.error) : t('inputHint')}
         </Text>
 
-        {/* ── 3. One tap: your usual foods ── */}
-        <Text style={s.sectionTitle}>{t('tapAgain')}</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap:12, paddingRight:4 }}>
-          {yourFoods.map(item => (
+        {/* ── 3. One tap: today's idea first, then your usual foods ── */}
+        <Text style={s.sectionTitle}>{t('quickLog')}</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap:12, paddingRight:4, paddingTop:4 }}>
+          {next && (
+            <TouchableOpacity key="__idea" style={[s.foodPill, s.ideaPill]} onPress={() => logFood(next)} activeOpacity={0.85}
+              accessibilityLabel={`${t('mealIdea', { meal: t(moment.label) })}: ${foodName(next.name)}`}>
+              <View>
+                <FoodImage image={next.image} emoji={next.emoji} name={next.name} size={58} round style={s.ideaImg} />
+                {plan.length > 1 && (
+                  <TouchableOpacity style={s.ideaSwap} onPress={() => setSwapIdx(i => i + 1)} accessibilityLabel={t('swap')} hitSlop={8}>
+                    <Text style={s.ideaSwapTxt}>↻</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+              <View style={s.ideaTag}><Text style={s.ideaTagTxt}>💡 {t('ideaTag')}</Text></View>
+              <Text style={s.foodName} numberOfLines={2}>{shortName(foodName(next.name))}</Text>
+              <Text style={s.foodProtein}>+{next.protein}g</Text>
+            </TouchableOpacity>
+          )}
+          {yourFoods.filter(item => !next || item.name !== next.name).map(item => (
             <TouchableOpacity key={item.name} style={s.foodPill} onPress={() => onFoodTap(item)} activeOpacity={0.85}>
               <FoodImage image={item.image} emoji={item.emoji} name={item.name} size={58} round />
               <Text style={s.foodName} numberOfLines={2}>{shortName(foodName(item.name))}</Text>
@@ -315,24 +334,6 @@ export default function HomeScreen({ navigation, route }) {
           ))}
         </ScrollView>
 
-        {/* ── 4. A quiet idea for the next meal ── */}
-        {next && (
-          <View style={s.ideaCard}>
-            <FoodImage image={next.image} emoji={next.emoji} name={next.name} size={48} />
-            <View style={{ flex:1 }}>
-              <Text style={s.ideaLabel}>💡 {t('mealIdea', { meal: t(moment.label) })}</Text>
-              <Text style={s.ideaName} numberOfLines={1}>{foodName(next.name)} · {t('approxProtein', { n: next.protein })}</Text>
-            </View>
-            {plan.length > 1 && (
-              <TouchableOpacity style={s.ideaSwap} onPress={() => setSwapIdx(i => i + 1)} accessibilityLabel={t('swap')} hitSlop={8}>
-                <Text style={s.ideaSwapTxt}>↻</Text>
-              </TouchableOpacity>
-            )}
-            <TouchableOpacity style={s.ideaLog} onPress={() => logFood(next)} activeOpacity={0.85}>
-              <Text style={s.ideaLogTxt}>{t('logIt')}</Text>
-            </TouchableOpacity>
-          </View>
-        )}
         {!next && remaining === 0 && (
           <View style={s.doneCard}>
             <Text style={s.doneEmoji}>🎉</Text>
@@ -439,11 +440,10 @@ const s = StyleSheet.create({
   // 2. Log buttons
   logRow:     { flexDirection:'row', gap:10 },
   logBtn:     { flex:1, height:92, borderRadius:R.lg, backgroundColor:C.card, borderWidth:1, borderColor:C.border, alignItems:'center', justifyContent:'center', gap:6 },
-  logBtnMain: { backgroundColor:C.primary, borderColor:C.primary },
-  logBtnOn:   { borderColor:C.primary, borderWidth:1.5, backgroundColor:C.primary+'14' },
+  logBtnOn:   { backgroundColor:C.primary, borderColor:C.primary },
   logIcon:    { fontSize:28, height:34 },
   logTxt:     { fontSize:15, fontWeight:'800', color:C.text },
-  logTxtMain: { color:'#0B0F14' },
+  logTxtOn:   { color:'#0B0F14' },
 
   inputBar:  { flexDirection:'row', alignItems:'center', backgroundColor:C.card, borderRadius:R.full, paddingLeft:18, paddingRight:6, height:54, borderWidth:1.5, borderColor:C.primary+'60', gap:6, marginTop:10 },
   input:     { flex:1, fontSize:16, color:C.text, paddingVertical:0 },
@@ -460,14 +460,13 @@ const s = StyleSheet.create({
   foodName:     { fontSize:13, fontWeight:'600', color:C.text, marginTop:8, marginBottom:2, textAlign:'center' },
   foodProtein:  { fontSize:13, color:C.primary, fontWeight:'800' },
 
-  // 4. Next-meal idea
-  ideaCard:    { flexDirection:'row', alignItems:'center', gap:12, backgroundColor:C.card, borderRadius:R.lg, padding:12, marginTop:22, borderWidth:1, borderColor:C.border },
-  ideaLabel:   { fontSize:12, fontWeight:'700', color:C.text2, marginBottom:3 },
-  ideaName:    { fontSize:14, fontWeight:'700', color:C.text },
-  ideaSwap:    { width:36, height:36, borderRadius:18, alignItems:'center', justifyContent:'center', backgroundColor:C.card2 },
-  ideaSwapTxt: { fontSize:17, color:C.text2, fontWeight:'700' },
-  ideaLog:     { paddingHorizontal:14, height:36, borderRadius:R.full, alignItems:'center', justifyContent:'center', borderWidth:1.5, borderColor:C.primary },
-  ideaLogTxt:  { fontSize:13, fontWeight:'800', color:C.primary },
+  // Today's idea, first chip in the row
+  ideaPill:    { width:96 },
+  ideaImg:     { borderWidth:2, borderColor:C.primary },
+  ideaTag:     { marginTop:6, backgroundColor:C.primary+'22', borderRadius:R.full, paddingHorizontal:8, paddingVertical:2 },
+  ideaTagTxt:  { fontSize:11, fontWeight:'800', color:C.primary },
+  ideaSwap:    { position:'absolute', top:-4, right:-8, width:26, height:26, borderRadius:13, alignItems:'center', justifyContent:'center', backgroundColor:C.card2, borderWidth:1, borderColor:C.border },
+  ideaSwapTxt: { fontSize:13, color:C.text, fontWeight:'800' },
 
   doneCard:  { backgroundColor:C.primary+'10', borderRadius:R.xl, padding:22, alignItems:'center', marginTop:22, borderWidth:1, borderColor:C.primary+'35' },
   doneEmoji: { fontSize:40, marginBottom:8 },
