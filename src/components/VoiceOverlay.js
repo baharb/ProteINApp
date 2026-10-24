@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { View, Modal, TouchableOpacity, StyleSheet, Animated, ActivityIndicator, Easing } from 'react-native';
+import { View, TouchableOpacity, StyleSheet, Animated, ActivityIndicator, Easing, BackHandler } from 'react-native';
 import { Text } from './AppText';
 import { C, R } from '../data/theme';
 import { useLang } from '../hooks/useLang';
@@ -7,9 +7,18 @@ import { useLang } from '../hooks/useLang';
 // Full-screen "recording" panel for voice input: a pulsing mic, a live level
 // meter and a timer while listening, then "Recognizing…" while the speech is
 // turned into text. Uses the state from useVoice().
+// A plain overlay, not a Modal: the result sheet (a Modal) opens right as this
+// closes, and two Modals swapping at once can freeze the screen on iOS.
 export default function VoiceOverlay({ voice }) {
   const { t } = useLang();
   const visible = voice.isListening || voice.isProcessing;
+
+  // Android back button = Cancel while recording
+  useEffect(() => {
+    if (!visible) return;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => { voice.cancelListening(); return true; });
+    return () => sub.remove();
+  }, [visible, voice.cancelListening]);
 
   const pulse = useRef(new Animated.Value(0)).current;
   useEffect(() => {
@@ -23,9 +32,9 @@ export default function VoiceOverlay({ voice }) {
   // five bars; the middle ones react most, so it looks like a voice meter
   const bars = [0.45, 0.75, 1, 0.75, 0.45].map(w => 6 + Math.round(42 * Math.min(1, voice.level * w + 0.08)));
 
+  if (!visible) return null;
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={voice.cancelListening}>
-      <View style={s.backdrop}>
+    <View style={s.backdrop}>
         <View style={s.panel}>
           {voice.isListening ? (
             <>
@@ -60,13 +69,12 @@ export default function VoiceOverlay({ voice }) {
             </>
           )}
         </View>
-      </View>
-    </Modal>
+    </View>
   );
 }
 
 const s = StyleSheet.create({
-  backdrop:   { flex:1, backgroundColor:'rgba(0,0,0,0.6)', alignItems:'center', justifyContent:'center', padding:24 },
+  backdrop:   { ...StyleSheet.absoluteFillObject, zIndex:100, elevation:100, backgroundColor:'rgba(0,0,0,0.6)', alignItems:'center', justifyContent:'center', padding:24 },
   panel:      { width:'100%', maxWidth:420, backgroundColor:C.card, borderRadius:R.xl, borderWidth:1, borderColor:C.border, paddingVertical:28, paddingHorizontal:22, alignItems:'center' },
   micWrap:    { width:120, height:120, alignItems:'center', justifyContent:'center', marginBottom:14 },
   ring:       { position:'absolute', width:110, height:110, borderRadius:55, backgroundColor:C.primary },

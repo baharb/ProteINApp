@@ -141,11 +141,15 @@ export function AppProvider({ children }) {
     }));
     if (!session||isGuest||DEMO) return;
     const todayStr = localDateKey();
-    const { data } = await supabase.from('meals')
+    // Save in the background: the meal is already on screen, so callers
+    // (sheets, buttons) don't wait on the network.
+    supabase.from('meals')
       .insert({ user_id:session.user.id, name, date:todayStr, slot, calories:obj.cal, protein:obj.p, carbs:obj.c, fat:obj.f })
-      .select('id').single();
-    // Attach the DB id so remove/update can reach this row later.
-    if (data?.id) setToday(prev => ({ ...prev, meals:prev.meals.map(m => m===obj ? { ...m, id:data.id } : m) }));
+      .select('id').single()
+      .then(({ data }) => {
+        // Attach the DB id so remove/update can reach this row later.
+        if (data?.id) setToday(prev => ({ ...prev, meals:prev.meals.map(m => m===obj ? { ...m, id:data.id } : m) }));
+      }, e => console.warn('save meal:', e?.message));
   }
 
   async function removeMeal(index) {

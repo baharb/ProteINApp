@@ -146,14 +146,15 @@ export default function HomeScreen({ navigation, route }) {
   async function logDescribed(items, protein, calories) {
     const mealName = items.map(it => it.qty !== 1 ? `${it.name} ×${it.qty}` : it.name).join(' + ');
     const one = items.length === 1 ? items[0] : null;   // single food → remember its amount too
-    await addMeal(mealName, calories, protein, 0, 0, getSlot(), {
-      emoji: items[0]?.emoji,
-      ...(one && { unit: one.unit, qty: one.qty, protein_per_unit: one.protein_per_unit, calories_per_unit: one.calories_per_unit }),
-    });
+    // Close first: the meal shows on Today at once; saving to the server can take a while.
     setSheet(prev => ({ ...prev, visible:false }));
     setText('');
     setTyping(false);
     showToast({ name: mealName, protein });
+    await addMeal(mealName, calories, protein, 0, 0, getSlot(), {
+      emoji: items[0]?.emoji,
+      ...(one && { unit: one.unit, qty: one.qty, protein_per_unit: one.protein_per_unit, calories_per_unit: one.calories_per_unit }),
+    });
   }
 
   const voice = useVoice({ lang, onResult: (said) => { setText(said); describe(said, true); } });

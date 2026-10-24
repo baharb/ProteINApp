@@ -69,6 +69,8 @@ export function useVoice({ onResult, lang }) {
       const data = await res.json();
       if (!res.ok||data.error) throw new Error(errorKey(res.status, data)||'voiceFailed');
       const text = data.text?.trim();
+      // Close the recording panel before the caller opens its own sheet.
+      setIsProcessing(false);
       if (text) { setHeard(text); onResult?.(text); } else setError('voiceFailed');
     } catch(e) { setError(e.message === 'Network request failed' ? 'cantReach' : (e.message || 'voiceFailed')); }
     finally { setIsProcessing(false); }
